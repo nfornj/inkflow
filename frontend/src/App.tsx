@@ -98,7 +98,17 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [debugExpanded, setDebugExpanded] = useState(true);
+
+  // AI Provider settings
+  const [aiProvider, setAiProvider] = useState<"gemini" | "openai" | "llama">(
+    "gemini"
+  );
   const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [llamaModelPath, setLlamaModelPath] = useState("");
+  const [llamaModelDownloaded, setLlamaModelDownloaded] = useState(false);
+  const [modelDownloadProgress, setModelDownloadProgress] = useState(0);
+  const [isDownloadingModel, setIsDownloadingModel] = useState(false);
 
   // Function to open settings as a tab
   function openSettingsTab() {
@@ -284,6 +294,50 @@ function App() {
       return new Uint8Array(uint8Array.buffer.slice(0));
     }
   };
+
+  // AI Provider setup and model management
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    // Check if Llama model is available on startup
+    const checkLlamaModel = async () => {
+      try {
+        const result = await window.electronAPI.checkLlamaModel();
+        if (result.success) {
+          setLlamaModelDownloaded(result.available);
+          if (result.path) {
+            setLlamaModelPath(result.path);
+          }
+          addDebugLog(
+            `Llama model check: ${result.available ? "available" : "not found"}`
+          );
+        }
+      } catch (error) {
+        addDebugLog(`Error checking Llama model: ${error}`);
+      }
+    };
+
+    checkLlamaModel();
+
+    // Set up Llama download progress listeners
+    window.electronAPI.onLlamaDownloadProgress((progress) => {
+      setModelDownloadProgress(progress);
+      addDebugLog(`Llama download progress: ${progress}%`);
+    });
+
+    window.electronAPI.onLlamaDownloadComplete(() => {
+      setIsDownloadingModel(false);
+      setLlamaModelDownloaded(true);
+      setModelDownloadProgress(100);
+      addDebugLog("Llama model download completed");
+    });
+
+    return () => {
+      // Cleanup listeners
+      window.electronAPI.removeAllListeners("llama-download-progress");
+      window.electronAPI.removeAllListeners("llama-download-complete");
+    };
+  }, []);
 
   // Configure PDF.js worker
   useEffect(() => {
@@ -1213,10 +1267,18 @@ ${textContent}`;
     if (!window.electronAPI || !prompt.trim()) return;
 
     setAiLoading(true);
-    addDebugLog("Asking AI assistant...");
+    addDebugLog(`Asking AI assistant using ${aiProvider}...`);
 
     try {
-      const result = await window.electronAPI.askAI(prompt);
+      // Get the appropriate API key based on provider
+      let apiKey = null;
+      if (aiProvider === "gemini" && geminiApiKey) {
+        apiKey = geminiApiKey;
+      } else if (aiProvider === "openai" && openaiApiKey) {
+        apiKey = openaiApiKey;
+      }
+
+      const result = await window.electronAPI.askAI(prompt, aiProvider, apiKey);
       if (result.success && result.content) {
         setAiReply(result.content);
         addDebugLog("AI response received");
@@ -1491,19 +1553,166 @@ ${textContent}`;
 
                 <div className="settings-sections">
                   <div className="setting-section-tab">
-                    <h3>API Configuration</h3>
+                    <h3>AI Provider</h3>
                     <div className="setting-item">
-                      <label htmlFor="gemini-api-key-tab">Gemini API Key</label>
-                      <input
-                        id="gemini-api-key-tab"
-                        type="password"
-                        value={geminiApiKey}
-                        onChange={(e) => setGeminiApiKey(e.target.value)}
-                        placeholder="Enter your Gemini API key"
-                        className="api-key-input-tab"
-                      />
+                      <label>Choose your AI provider</label>
+                      <div className="provider-selection">
+                        <div className="provider-option">
+                          <label className="provider-label">
+                            <input
+                              type="radio"
+                              name="aiProvider"
+                              value="gemini"
+                              checked={aiProvider === "gemini"}
+                              onChange={(e) =>
+                                setAiProvider(e.target.value as "gemini")
+                              }
+                            />
+                            <div className="provider-info">
+                              <span className="provider-name">
+                                Google Gemini
+                              </span>
+                              <span className="provider-desc">
+                                Cloud-based, fast responses
+                              </span>
+                            </div>
+                          </label>
+                          {aiProvider === "gemini" && (
+                            <input
+                              type="password"
+                              value={geminiApiKey}
+                              onChange={(e) => setGeminiApiKey(e.target.value)}
+                              placeholder="Enter your Gemini API key"
+                              className="api-key-input-tab"
+                            />
+                          )}
+                        </div>
+
+                        <div className="provider-option">
+                          <label className="provider-label">
+                            <input
+                              type="radio"
+                              name="aiProvider"
+                              value="openai"
+                              checked={aiProvider === "openai"}
+                              onChange={(e) =>
+                                setAiProvider(e.target.value as "openai")
+                              }
+                            />
+                            <div className="provider-info">
+                              <span className="provider-name">OpenAI GPT</span>
+                              <span className="provider-desc">
+                                Advanced language model
+                              </span>
+                            </div>
+                          </label>
+                          {aiProvider === "openai" && (
+                            <input
+                              type="password"
+                              value={openaiApiKey}
+                              onChange={(e) => setOpenaiApiKey(e.target.value)}
+                              placeholder="Enter your OpenAI API key"
+                              className="api-key-input-tab"
+                            />
+                          )}
+                        </div>
+
+                        <div className="provider-option">
+                          <label className="provider-label">
+                            <input
+                              type="radio"
+                              name="aiProvider"
+                              value="llama"
+                              checked={aiProvider === "llama"}
+                              onChange={(e) =>
+                                setAiProvider(e.target.value as "llama")
+                              }
+                            />
+                            <div className="provider-info">
+                              <span className="provider-name">
+                                Llama 3.2 (Local)
+                              </span>
+                              <span className="provider-desc">
+                                Private, offline processing
+                              </span>
+                            </div>
+                          </label>
+                          {aiProvider === "llama" && (
+                            <div className="llama-config">
+                              {!llamaModelDownloaded ? (
+                                <div className="model-download-section">
+                                  <p className="download-info">
+                                    Download Llama 3.2 model for local AI
+                                    processing
+                                  </p>
+                                  {isDownloadingModel ? (
+                                    <div className="download-progress">
+                                      <div className="progress-bar">
+                                        <div
+                                          className="progress-fill"
+                                          style={{
+                                            width: `${modelDownloadProgress}%`,
+                                          }}
+                                        ></div>
+                                      </div>
+                                      <span className="progress-text">
+                                        Downloading... {modelDownloadProgress}%
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      className="download-btn"
+                                      onClick={async () => {
+                                        setIsDownloadingModel(true);
+                                        setModelDownloadProgress(0);
+                                        addDebugLog(
+                                          "Starting Llama model download..."
+                                        );
+
+                                        try {
+                                          const result =
+                                            await window.electronAPI.downloadLlamaModel();
+                                          if (!result.success) {
+                                            setIsDownloadingModel(false);
+                                            addDebugLog(
+                                              `Download failed: ${result.error}`
+                                            );
+                                          }
+                                        } catch (error) {
+                                          setIsDownloadingModel(false);
+                                          addDebugLog(
+                                            `Download error: ${error}`
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      Download Llama 3.2 Model (~4GB)
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="model-status">
+                                  <span className="status-indicator success">
+                                    ✓
+                                  </span>
+                                  <span>Llama 3.2 model ready</span>
+                                  <button
+                                    className="secondary-btn"
+                                    onClick={() =>
+                                      setLlamaModelDownloaded(false)
+                                    }
+                                  >
+                                    Re-download
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <span className="setting-description">
-                        Used for AI-powered PDF analysis and chat features
+                        Choose between cloud APIs for fast responses or local
+                        models for privacy
                       </span>
                     </div>
                   </div>
@@ -1543,7 +1752,11 @@ ${textContent}`;
                         </div>
                         <div className="info-item">
                           <span className="info-label">AI Provider</span>
-                          <span className="info-value">Google Gemini</span>
+                          <span className="info-value">
+                            {aiProvider === "gemini" && "Google Gemini"}
+                            {aiProvider === "openai" && "OpenAI GPT"}
+                            {aiProvider === "llama" && "Llama 3.2 (Local)"}
+                          </span>
                         </div>
                       </div>
                     </div>

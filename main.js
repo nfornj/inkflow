@@ -278,45 +278,166 @@ ipcMain.handle('save-file-dialog', async (event, data, defaultName) => {
   return { success: false };
 });
 
-// AI API call (Gemini)
-ipcMain.handle('ask-ai', async (event, prompt) => {
+// AI API call with multiple providers
+ipcMain.handle('ask-ai', async (event, prompt, provider = 'gemini', apiKey = null) => {
   try {
     const fetch = (await import('node-fetch')).default;
     
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is not set');
+    // Get API key from environment or parameter
+    let key = apiKey;
+    if (!key) {
+      if (provider === 'gemini') {
+        key = process.env.GEMINI_API_KEY;
+      } else if (provider === 'openai') {
+        key = process.env.OPENAI_API_KEY;
+      }
+    }
+    
+    if (!key && provider !== 'llama') {
+      throw new Error(`${provider.toUpperCase()}_API_KEY is not set`);
     }
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `You are a helpful assistant embedded in a PDF and browser application. You can help with document analysis, web browsing, and general questions.\n\nUser: ${prompt}`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.2,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 1000,
+    switch (provider) {
+      case 'gemini':
+        return await callGeminiAPI(fetch, key, prompt);
+      case 'openai':
+        return await callOpenAIAPI(fetch, key, prompt);
+      case 'llama':
+        return await callLlamaLocal(prompt);
+      default:
+        throw new Error(`Unsupported AI provider: ${provider}`);
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// Gemini API implementation
+async function callGeminiAPI(fetch, apiKey, prompt) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: `You are a helpful assistant embedded in a PDF and browser application. You can help with document analysis, web browsing, and general questions.\n\nUser: ${prompt}`
+        }]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 1000,
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return {
+    success: true,
+    content: data.candidates[0].content.parts[0].text
+  };
+}
+
+// OpenAI API implementation
+async function callOpenAIAPI(fetch, apiKey, prompt) {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant embedded in a PDF and browser application. You can help with document analysis, web browsing, and general questions.'
+        },
+        {
+          role: 'user',
+          content: prompt
         }
-      })
-    });
+      ],
+      temperature: 0.2,
+      max_tokens: 1000
+    })
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
-    }
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+  }
 
-    const data = await response.json();
+  const data = await response.json();
+  return {
+    success: true,
+    content: data.choices[0].message.content
+  };
+}
+
+// Local Llama implementation (placeholder for now)
+async function callLlamaLocal(prompt) {
+  // TODO: Implement local Llama inference
+  // This would use a local inference server like llama.cpp or ollama
+  throw new Error('Local Llama integration not yet implemented. Please use cloud providers for now.');
+}
+
+// Llama model download functionality
+ipcMain.handle('download-llama-model', async (event) => {
+  try {
+    // TODO: Implement model download
+    // This would download Llama 3.2 model from Hugging Face or official repo
+    // For now, return a placeholder response
+    
+    // Simulate download progress
+    const totalSize = 4000; // 4GB in MB
+    let downloaded = 0;
+    
+    const downloadInterval = setInterval(() => {
+      downloaded += 100; // 100MB per update
+      const progress = Math.min((downloaded / totalSize) * 100, 100);
+      
+      // Send progress update to frontend
+      event.sender.send('llama-download-progress', progress);
+      
+      if (progress >= 100) {
+        clearInterval(downloadInterval);
+        event.sender.send('llama-download-complete');
+      }
+    }, 500); // Update every 500ms
+    
     return {
       success: true,
-      content: data.candidates[0].content.parts[0].text
+      message: 'Download started'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
+// Check if Llama model is available
+ipcMain.handle('check-llama-model', async (event) => {
+  try {
+    // TODO: Check if model exists locally
+    // For now, return false
+    return {
+      success: true,
+      available: false,
+      path: null
     };
   } catch (error) {
     return {

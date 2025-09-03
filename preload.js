@@ -17,8 +17,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFileDialog: (data, defaultName) => ipcRenderer.invoke('save-file-dialog', data, defaultName),
 
   // AI integration
-  askAI: (prompt) => ipcRenderer.invoke('ask-ai', prompt),
+  askAI: (prompt, provider, apiKey) => ipcRenderer.invoke('ask-ai', prompt, provider, apiKey),
   analyzePdfWithGemini: (request) => ipcRenderer.invoke('analyze-pdf-with-gemini', request),
+  
+  // Llama model management
+  downloadLlamaModel: () => ipcRenderer.invoke('download-llama-model'),
+  checkLlamaModel: () => ipcRenderer.invoke('check-llama-model'),
+  
+  // Llama download progress listeners
+  onLlamaDownloadProgress: (callback) => {
+    ipcRenderer.on('llama-download-progress', (event, progress) => callback(progress));
+  },
+  onLlamaDownloadComplete: (callback) => {
+    ipcRenderer.on('llama-download-complete', () => callback());
+  },
 
   // Window management
   windowResized: () => ipcRenderer.invoke('window-resized'),
