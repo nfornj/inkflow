@@ -24,7 +24,7 @@
 - Google Gemini integration
 - Intelligent PDF analysis and summarization
 - Context-aware document understanding
-- Real-time chat interface with Neural Oracle
+- Real-time chat interface with InkFlow AI
 
 ### 🎨 **Modern UI**
 

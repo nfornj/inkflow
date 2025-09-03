@@ -11,7 +11,7 @@ import {
   FileTextIcon,
   GlobeIcon,
   LightningBoltIcon,
-  TrashIcon,
+  Cross2Icon,
   ExternalLinkIcon,
   ZoomInIcon,
   ZoomOutIcon,
@@ -1399,7 +1399,7 @@ ${textContent}`;
                 }}
                 title="Close tab"
               >
-                <TrashIcon />
+                <Cross2Icon />
               </button>
             )}
           </div>
@@ -1537,9 +1537,15 @@ ${textContent}`;
                           }
                           className="provider-select"
                         >
-                          <option value="gemini">Google Gemini - Cloud-based, fast responses</option>
-                          <option value="openai">OpenAI GPT - Advanced language model</option>
-                          <option value="llama">Llama 3.2 (Local) - Private, offline processing</option>
+                          <option value="gemini">
+                            Google Gemini - Cloud-based, fast responses
+                          </option>
+                          <option value="openai">
+                            OpenAI GPT - Advanced language model
+                          </option>
+                          <option value="llama">
+                            Llama 3.2 (Local) - Private, offline processing
+                          </option>
                         </select>
                       </div>
 
@@ -1740,7 +1746,7 @@ ${textContent}`;
             )}px) • Double-click to reset`}
           />
           <div className="gemini-header">
-            <h1>✨ Neural Oracle</h1>
+            <h1>✨ InkFlow</h1>
           </div>
 
           <div className="gemini-chat">
