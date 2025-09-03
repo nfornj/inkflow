@@ -1,0 +1,59 @@
+{
+  "name": "inkflow",
+  "version": "1.0.0",
+  "description": "InkFlow - Intelligent PDF viewer and browser with AI-powered document analysis",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:react\" \"wait-on http://localhost:3000 && NODE_ENV=development electron .\"",
+    "dev:react": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "build:electron": "electron-builder",
+    "postinstall": "cd frontend && npm install"
+  },
+  "keywords": [
+    "inkflow",
+    "electron",
+    "pdf",
+    "browser",
+    "ai",
+    "document",
+    "viewer",
+    "intelligent",
+    "flow"
+  ],
+  "author": "neekrish",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.2",
+    "electron-store": "^8.1.0",
+    "node-fetch": "^3.3.2"
+  },
+  "build": {
+    "appId": "com.neekrish.inkflow",
+    "productName": "InkFlow",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "frontend/build/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
