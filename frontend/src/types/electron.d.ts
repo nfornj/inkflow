@@ -40,8 +40,8 @@ export interface ElectronAPI {
 
 declare global {
   interface Window {
-    electronAPI: ElectronAPI;
-    env: {
+    electronAPI?: ElectronAPI;
+    env?: {
       NODE_ENV: string;
     };
   }

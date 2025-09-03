@@ -408,4 +408,3 @@ const result = await window.electronAPI.newOperation(params);
 - **Cross-Platform**: Test on macOS, Windows, and Linux
 
 This application successfully provides a professional PDF viewer and browser experience without the limitations typically encountered with web-based iframe embedding.
-

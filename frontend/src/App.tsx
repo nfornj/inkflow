@@ -21,53 +21,11 @@ import {
   UpdateIcon,
   PaperPlaneIcon,
   GearIcon,
-  Cross2Icon,
+
 } from "@radix-ui/react-icons";
 import "./App.css";
 
-// Electron API type declaration
-declare global {
-  interface Window {
-    electronAPI: {
-      navigateUrl: (
-        url: string
-      ) => Promise<{ success: boolean; browserId?: string; error?: string }>;
-      browserBack: () => Promise<{ success: boolean }>;
-      browserForward: () => Promise<{ success: boolean }>;
-      browserReload: () => Promise<{ success: boolean }>;
-      browserStop: () => Promise<{ success: boolean }>;
-      hideBrowser: () => Promise<{ success: boolean }>;
-      showBrowser: () => Promise<{ success: boolean }>;
-      openFileDialog: () => Promise<{
-        success: boolean;
-        filePath?: string;
-        fileName?: string;
-        data?: number[];
-      }>;
-      saveFileDialog: (
-        data: number[],
-        defaultName: string
-      ) => Promise<{ success: boolean; filePath?: string }>;
-      askAI: (
-        prompt: string
-      ) => Promise<{ success: boolean; content?: string; error?: string }>;
-      analyzePdfWithGemini: (request: {
-        textContent: string;
-      }) => Promise<{ success: boolean; content?: string; error?: string }>;
-      windowResized: () => Promise<{ success: boolean }>;
-      onBrowserLoading: (
-        callback: (data: { id: string; loading: boolean }) => void
-      ) => void;
-      onBrowserUrlChanged: (
-        callback: (data: { id: string; url: string }) => void
-      ) => void;
-      onBrowserError: (
-        callback: (data: { id: string; error: string }) => void
-      ) => void;
-      removeAllListeners: (channel: string) => void;
-    };
-  }
-}
+
 
 interface Tab {
   id: string;
@@ -302,6 +260,11 @@ function App() {
     // Check if Llama model is available on startup
     const checkLlamaModel = async () => {
       try {
+        if (!window.electronAPI?.checkLlamaModel) {
+          addDebugLog("Llama model check API not available");
+          return;
+        }
+        
         const result = await window.electronAPI.checkLlamaModel();
         if (result.success) {
           setLlamaModelDownloaded(result.available);
@@ -320,22 +283,28 @@ function App() {
     checkLlamaModel();
 
     // Set up Llama download progress listeners
-    window.electronAPI.onLlamaDownloadProgress((progress) => {
-      setModelDownloadProgress(progress);
-      addDebugLog(`Llama download progress: ${progress}%`);
-    });
+    if (window.electronAPI?.onLlamaDownloadProgress) {
+      window.electronAPI.onLlamaDownloadProgress((progress) => {
+        setModelDownloadProgress(progress);
+        addDebugLog(`Llama download progress: ${progress}%`);
+      });
+    }
 
-    window.electronAPI.onLlamaDownloadComplete(() => {
-      setIsDownloadingModel(false);
-      setLlamaModelDownloaded(true);
-      setModelDownloadProgress(100);
-      addDebugLog("Llama model download completed");
-    });
+    if (window.electronAPI?.onLlamaDownloadComplete) {
+      window.electronAPI.onLlamaDownloadComplete(() => {
+        setIsDownloadingModel(false);
+        setLlamaModelDownloaded(true);
+        setModelDownloadProgress(100);
+        addDebugLog("Llama model download completed");
+      });
+    }
 
     return () => {
       // Cleanup listeners
-      window.electronAPI.removeAllListeners("llama-download-progress");
-      window.electronAPI.removeAllListeners("llama-download-complete");
+      if (window.electronAPI?.removeAllListeners) {
+        window.electronAPI.removeAllListeners("llama-download-progress");
+        window.electronAPI.removeAllListeners("llama-download-complete");
+      }
     };
   }, []);
 
@@ -405,9 +374,11 @@ function App() {
     });
 
     return () => {
-      window.electronAPI.removeAllListeners("browser-loading");
-      window.electronAPI.removeAllListeners("browser-url-changed");
-      window.electronAPI.removeAllListeners("browser-error");
+      if (window.electronAPI?.removeAllListeners) {
+        window.electronAPI.removeAllListeners("browser-loading");
+        window.electronAPI.removeAllListeners("browser-url-changed");
+        window.electronAPI.removeAllListeners("browser-error");
+      }
     };
   }, []);
 
@@ -507,15 +478,15 @@ function App() {
 
     try {
       const result = await window.electronAPI.openFileDialog();
-      if (result.success && result.data) {
+      if (result.success && result.fileBuffer) {
         addDebugLog(`Opening PDF: ${result.fileName}`);
 
         // Hide browser view for PDF mode
         await window.electronAPI.hideBrowser();
         setIsWebView(false);
 
-        // Convert number array back to Uint8Array
-        const pdfBytes = new Uint8Array(result.data);
+        // Convert ArrayBuffer to Uint8Array
+        const pdfBytes = new Uint8Array(result.fileBuffer);
 
         // Validate the PDF file
         addDebugLog(`PDF file size: ${pdfBytes.length} bytes`);
@@ -884,8 +855,8 @@ function App() {
         textContent: enhancedPrompt,
       });
 
-      if (result.success && result.content) {
-        setPdfSummary(result.content);
+      if (result.success && result.summary) {
+        setPdfSummary(result.summary);
         addDebugLog("PDF summary generated successfully");
       } else {
         setPdfSummary(
@@ -1271,7 +1242,7 @@ ${textContent}`;
 
     try {
       // Get the appropriate API key based on provider
-      let apiKey = null;
+      let apiKey: string | undefined = undefined;
       if (aiProvider === "gemini" && geminiApiKey) {
         apiKey = geminiApiKey;
       } else if (aiProvider === "openai" && openaiApiKey) {
@@ -1670,6 +1641,12 @@ ${textContent}`;
                                         );
 
                                         try {
+                                          if (!window.electronAPI?.downloadLlamaModel) {
+                                            addDebugLog("Download API not available");
+                                            setIsDownloadingModel(false);
+                                            return;
+                                          }
+                                          
                                           const result =
                                             await window.electronAPI.downloadLlamaModel();
                                           if (!result.success) {
