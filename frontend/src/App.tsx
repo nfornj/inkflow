@@ -21,11 +21,8 @@ import {
   UpdateIcon,
   PaperPlaneIcon,
   GearIcon,
-
 } from "@radix-ui/react-icons";
 import "./App.css";
-
-
 
 interface Tab {
   id: string;
@@ -264,7 +261,7 @@ function App() {
           addDebugLog("Llama model check API not available");
           return;
         }
-        
+
         const result = await window.electronAPI.checkLlamaModel();
         if (result.success) {
           setLlamaModelDownloaded(result.available);
@@ -1526,170 +1523,128 @@ ${textContent}`;
                   <div className="setting-section-tab">
                     <h3>AI Provider</h3>
                     <div className="setting-item">
-                      <label>Choose your AI provider</label>
-                      <div className="provider-selection">
-                        <div className="provider-option">
-                          <label className="provider-label">
-                            <input
-                              type="radio"
-                              name="aiProvider"
-                              value="gemini"
-                              checked={aiProvider === "gemini"}
-                              onChange={(e) =>
-                                setAiProvider(e.target.value as "gemini")
-                              }
-                            />
-                            <div className="provider-info">
-                              <span className="provider-name">
-                                Google Gemini
-                              </span>
-                              <span className="provider-desc">
-                                Cloud-based, fast responses
-                              </span>
-                            </div>
-                          </label>
-                          {aiProvider === "gemini" && (
-                            <input
-                              type="password"
-                              value={geminiApiKey}
-                              onChange={(e) => setGeminiApiKey(e.target.value)}
-                              placeholder="Enter your Gemini API key"
-                              className="api-key-input-tab"
-                            />
-                          )}
-                        </div>
+                      <label htmlFor="ai-provider-select">
+                        Choose your AI provider
+                      </label>
+                      <div className="provider-dropdown-container">
+                        <select
+                          id="ai-provider-select"
+                          value={aiProvider}
+                          onChange={(e) =>
+                            setAiProvider(
+                              e.target.value as "gemini" | "openai" | "llama"
+                            )
+                          }
+                          className="provider-select"
+                        >
+                          <option value="gemini">Google Gemini - Cloud-based, fast responses</option>
+                          <option value="openai">OpenAI GPT - Advanced language model</option>
+                          <option value="llama">Llama 3.2 (Local) - Private, offline processing</option>
+                        </select>
+                      </div>
 
-                        <div className="provider-option">
-                          <label className="provider-label">
-                            <input
-                              type="radio"
-                              name="aiProvider"
-                              value="openai"
-                              checked={aiProvider === "openai"}
-                              onChange={(e) =>
-                                setAiProvider(e.target.value as "openai")
-                              }
-                            />
-                            <div className="provider-info">
-                              <span className="provider-name">OpenAI GPT</span>
-                              <span className="provider-desc">
-                                Advanced language model
-                              </span>
-                            </div>
-                          </label>
-                          {aiProvider === "openai" && (
-                            <input
-                              type="password"
-                              value={openaiApiKey}
-                              onChange={(e) => setOpenaiApiKey(e.target.value)}
-                              placeholder="Enter your OpenAI API key"
-                              className="api-key-input-tab"
-                            />
-                          )}
-                        </div>
+                      {/* Conditional configuration based on selected provider */}
+                      <div className="provider-config">
+                        {aiProvider === "gemini" && (
+                          <input
+                            type="password"
+                            value={geminiApiKey}
+                            onChange={(e) => setGeminiApiKey(e.target.value)}
+                            placeholder="Enter your Gemini API key"
+                            className="api-key-input-compact"
+                          />
+                        )}
 
-                        <div className="provider-option">
-                          <label className="provider-label">
-                            <input
-                              type="radio"
-                              name="aiProvider"
-                              value="llama"
-                              checked={aiProvider === "llama"}
-                              onChange={(e) =>
-                                setAiProvider(e.target.value as "llama")
-                              }
-                            />
-                            <div className="provider-info">
-                              <span className="provider-name">
-                                Llama 3.2 (Local)
-                              </span>
-                              <span className="provider-desc">
-                                Private, offline processing
-                              </span>
-                            </div>
-                          </label>
-                          {aiProvider === "llama" && (
-                            <div className="llama-config">
-                              {!llamaModelDownloaded ? (
-                                <div className="model-download-section">
-                                  <p className="download-info">
-                                    Download Llama 3.2 model for local AI
-                                    processing
-                                  </p>
-                                  {isDownloadingModel ? (
-                                    <div className="download-progress">
-                                      <div className="progress-bar">
-                                        <div
-                                          className="progress-fill"
-                                          style={{
-                                            width: `${modelDownloadProgress}%`,
-                                          }}
-                                        ></div>
-                                      </div>
-                                      <span className="progress-text">
-                                        Downloading... {modelDownloadProgress}%
-                                      </span>
+                        {aiProvider === "openai" && (
+                          <input
+                            type="password"
+                            value={openaiApiKey}
+                            onChange={(e) => setOpenaiApiKey(e.target.value)}
+                            placeholder="Enter your OpenAI API key"
+                            className="api-key-input-compact"
+                          />
+                        )}
+
+                        {aiProvider === "llama" && (
+                          <div className="llama-config-compact">
+                            {!llamaModelDownloaded ? (
+                              <div className="model-download-compact">
+                                <p className="download-info-compact">
+                                  Download required for local processing (~4GB)
+                                </p>
+                                {isDownloadingModel ? (
+                                  <div className="download-progress-compact">
+                                    <div className="progress-bar-compact">
+                                      <div
+                                        className="progress-fill-compact"
+                                        style={{
+                                          width: `${modelDownloadProgress}%`,
+                                        }}
+                                      ></div>
                                     </div>
-                                  ) : (
-                                    <button
-                                      className="download-btn"
-                                      onClick={async () => {
-                                        setIsDownloadingModel(true);
-                                        setModelDownloadProgress(0);
-                                        addDebugLog(
-                                          "Starting Llama model download..."
-                                        );
+                                    <span className="progress-text-compact">
+                                      {modelDownloadProgress}%
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    className="download-btn-compact"
+                                    onClick={async () => {
+                                      setIsDownloadingModel(true);
+                                      setModelDownloadProgress(0);
+                                      addDebugLog(
+                                        "Starting Llama model download..."
+                                      );
 
-                                        try {
-                                          if (!window.electronAPI?.downloadLlamaModel) {
-                                            addDebugLog("Download API not available");
-                                            setIsDownloadingModel(false);
-                                            return;
-                                          }
-                                          
-                                          const result =
-                                            await window.electronAPI.downloadLlamaModel();
-                                          if (!result.success) {
-                                            setIsDownloadingModel(false);
-                                            addDebugLog(
-                                              `Download failed: ${result.error}`
-                                            );
-                                          }
-                                        } catch (error) {
+                                      try {
+                                        if (
+                                          !window.electronAPI
+                                            ?.downloadLlamaModel
+                                        ) {
+                                          addDebugLog(
+                                            "Download API not available"
+                                          );
+                                          setIsDownloadingModel(false);
+                                          return;
+                                        }
+
+                                        const result =
+                                          await window.electronAPI.downloadLlamaModel();
+                                        if (!result.success) {
                                           setIsDownloadingModel(false);
                                           addDebugLog(
-                                            `Download error: ${error}`
+                                            `Download failed: ${result.error}`
                                           );
                                         }
-                                      }}
-                                    >
-                                      Download Llama 3.2 Model (~4GB)
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="model-status">
-                                  <span className="status-indicator success">
-                                    ✓
-                                  </span>
-                                  <span>Llama 3.2 model ready</span>
-                                  <button
-                                    className="secondary-btn"
-                                    onClick={() =>
-                                      setLlamaModelDownloaded(false)
-                                    }
+                                      } catch (error) {
+                                        setIsDownloadingModel(false);
+                                        addDebugLog(`Download error: ${error}`);
+                                      }
+                                    }}
                                   >
-                                    Re-download
+                                    Download Model
                                   </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="model-status-compact">
+                                <span className="status-text">
+                                  ✓ Model ready for local processing
+                                </span>
+                                <button
+                                  className="redownload-btn"
+                                  onClick={() => setLlamaModelDownloaded(false)}
+                                >
+                                  Re-download
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <span className="setting-description">
-                        Choose between cloud APIs for fast responses or local
-                        models for privacy
+                        Cloud providers require API keys, local models need to
+                        be downloaded
                       </span>
                     </div>
                   </div>
