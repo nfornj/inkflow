@@ -19,10 +19,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // AI integration
   askAI: (prompt, provider, apiKey) => ipcRenderer.invoke('ask-ai', prompt, provider, apiKey),
   analyzePdfWithGemini: (request) => ipcRenderer.invoke('analyze-pdf-with-gemini', request),
+  analyzePdf: (request) => ipcRenderer.invoke('analyze-pdf', request),
   
   // Llama model management
   downloadLlamaModel: () => ipcRenderer.invoke('download-llama-model'),
   checkLlamaModel: () => ipcRenderer.invoke('check-llama-model'),
+  requestMacosPermissions: () => ipcRenderer.invoke('request-macos-permissions'),
+  installOllama: () => ipcRenderer.invoke('install-ollama'),
+  startOllamaService: () => ipcRenderer.invoke('start-ollama-service'),
+  testOllamaConnection: () => ipcRenderer.invoke('test-ollama-connection'),
+  testOllamaInstallation: () => ipcRenderer.invoke('test-ollama-installation'),
   
   // Llama download progress listeners
   onLlamaDownloadProgress: (callback) => {
@@ -30,6 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onLlamaDownloadComplete: (callback) => {
     ipcRenderer.on('llama-download-complete', () => callback());
+  },
+  onOllamaInstallProgress: (callback) => {
+    ipcRenderer.on('ollama-install-progress', (event, data) => callback(data));
   },
 
   // Window management
@@ -49,7 +58,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Remove listeners
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);
-  }
+  },
+
+  // LLM Autofill APIs
+  llmAutofillGetSuggestion: (fieldContext) => ipcRenderer.invoke('llm-autofill-get-suggestion', fieldContext),
+  llmAutofillGenerateQuestion: (fieldContext) => ipcRenderer.invoke('llm-autofill-generate-question', fieldContext),
+  llmAutofillValidateInput: (input, fieldType) => ipcRenderer.invoke('llm-autofill-validate-input', input, fieldType),
+  llmAutofillProcessInput: (input, fieldType) => ipcRenderer.invoke('llm-autofill-process-input', input, fieldType),
+  llmAutofillGetProfile: () => ipcRenderer.invoke('llm-autofill-get-profile'),
+  llmAutofillUpdateProfile: (field, value) => ipcRenderer.invoke('llm-autofill-update-profile', field, value),
+  llmAutofillGetPerformance: () => ipcRenderer.invoke('llm-autofill-get-performance'),
+  llmAutofillCheckStatus: () => ipcRenderer.invoke('llm-autofill-check-status')
 });
 
 // Environment variables

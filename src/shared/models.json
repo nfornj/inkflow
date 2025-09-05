@@ -1,0 +1,75 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-01-03",
+  "models": [
+    {
+      "id": "llama-3.2-8b-instruct-fast",
+      "modelName": "LLaMA 3.2 8B Instruct (Fast)",
+      "description": "Fast, efficient model for autofill suggestions with good accuracy",
+      "quantization": "Q4_K_M",
+      "downloadUrl": "ollama://llama3.2:latest",
+      "checksum": "sha256:PLACEHOLDER_CHECKSUM_UPDATE_WITH_REAL_VALUE",
+      "minRamGb": 8,
+      "maxRamGb": 12,
+      "gpuRecommended": true,
+      "gpuLayers": 32,
+      "contextLength": 8192,
+      "fileSizeGb": 4.7,
+      "performance": {
+        "inferenceSpeed": "fast",
+        "accuracy": "high",
+        "memoryEfficiency": "good"
+      },
+      "supportedTasks": ["autofill", "text_generation", "question_answering"],
+      "tags": ["fast", "efficient", "autofill", "recommended"]
+    },
+    {
+      "id": "llama-3.2-8b-instruct-quality",
+      "modelName": "LLaMA 3.2 8B Instruct (Quality)",
+      "description": "Higher quality model with better accuracy but slower inference",
+      "quantization": "Q8_0",
+      "downloadUrl": "ollama://llama3.2:latest",
+      "checksum": "sha256:PLACEHOLDER_CHECKSUM_UPDATE_WITH_REAL_VALUE",
+      "minRamGb": 10,
+      "maxRamGb": 16,
+      "gpuRecommended": true,
+      "gpuLayers": 32,
+      "contextLength": 8192,
+      "fileSizeGb": 8.9,
+      "performance": {
+        "inferenceSpeed": "medium",
+        "accuracy": "very_high",
+        "memoryEfficiency": "moderate"
+      },
+      "supportedTasks": ["autofill", "text_generation", "question_answering"],
+      "tags": ["quality", "accurate", "autofill", "premium"]
+    },
+    {
+      "id": "phi-3-3.8b-instruct",
+      "modelName": "Phi-3 3.8B Instruct",
+      "description": "Compact model for lower-end hardware with good performance",
+      "quantization": "Q4_K_M",
+      "downloadUrl": "ollama://llama3.2:3b",
+      "checksum": "sha256:PLACEHOLDER_CHECKSUM_UPDATE_WITH_REAL_VALUE",
+      "minRamGb": 4,
+      "maxRamGb": 8,
+      "gpuRecommended": false,
+      "gpuLayers": 16,
+      "contextLength": 4096,
+      "fileSizeGb": 2.3,
+      "performance": {
+        "inferenceSpeed": "very_fast",
+        "accuracy": "good",
+        "memoryEfficiency": "excellent"
+      },
+      "supportedTasks": ["autofill", "text_generation"],
+      "tags": ["compact", "fast", "low_memory", "mobile"]
+    }
+  ],
+  "defaultModel": "llama-3.2-8b-instruct-fast",
+  "fallbackModel": "phi-3-3.8b-instruct",
+  "updateCheckUrl": "https://api.github.com/repos/neekrish/inkflow/releases/latest",
+  "modelStoragePath": "models",
+  "downloadTimeout": 300000,
+  "verificationTimeout": 60000
+}

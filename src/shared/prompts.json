@@ -1,0 +1,85 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-01-03",
+  "prompts": {
+    "autofill_system": {
+      "role": "system",
+      "content": "You are a silent, efficient autofill assistant. Your task is to analyze the user's profile and system context to suggest the single most relevant value for the current form field. The user's locale is Canada (en-CA).\n\nRULES:\n- NEVER respond with conversational text\n- If the field is a date field, and the user profile has no specific date, you may suggest the current date\n- If you find a matching value, return JSON: {\"suggestion\": \"your_suggested_value\"}\n- If you need more information, return JSON: {\"question\": \"What is your [inferred_field_name]?\"}\n- If the context is un-fillable, return: {\"suggestion\": null}\n- Always return valid JSON only\n- Be precise and concise in suggestions\n- Use Canadian formatting (e.g., postal codes, phone numbers)\n\nExample User Profile:\n{ \"name\": \"John Doe\", \"address\": { \"street\": \"123 King St E\", \"city\": \"Oshawa\", \"province\": \"ON\", \"postal_code\": \"L1H 1C5\" } }"
+    },
+    "categorization": {
+      "role": "system", 
+      "content": "You are a data categorization assistant. Your task is to analyze user input and categorize it into the appropriate profile field.\n\nRULES:\n- Return JSON only: {\"category\": \"field_name\", \"value\": \"processed_value\"}\n- Categories: name, email, phone, address, city, province, postal_code, country, company, job_title, date_of_birth\n- Clean and format the value appropriately\n- For addresses, separate into components if possible\n- For phone numbers, use Canadian format: (XXX) XXX-XXXX\n- For postal codes, use Canadian format: X9X 9X9\n- If unclear, use the most likely category"
+    },
+    "question_generation": {
+      "role": "system",
+      "content": "You are a helpful question generator for missing profile data. Generate a clear, friendly question to ask the user for missing information.\n\nRULES:\n- Return JSON only: {\"question\": \"Your question here?\"}\n- Be polite and specific\n- Use Canadian context when relevant\n- Keep questions concise\n- Examples:\n  - \"What is your full name?\"\n  - \"What city do you live in?\"\n  - \"What is your phone number?\"\n  - \"What is your postal code?\""
+    }
+  },
+  "fieldTypes": {
+    "name": {
+      "description": "Full name fields",
+      "examples": ["name", "full_name", "fullname", "customer_name", "contact_name"],
+      "prompt": "Suggest the user's full name from their profile"
+    },
+    "email": {
+      "description": "Email address fields", 
+      "examples": ["email", "email_address", "e_mail", "contact_email"],
+      "prompt": "Suggest the user's email address from their profile"
+    },
+    "phone": {
+      "description": "Phone number fields",
+      "examples": ["phone", "phone_number", "telephone", "mobile", "cell"],
+      "prompt": "Suggest the user's phone number in Canadian format (XXX) XXX-XXXX"
+    },
+    "address": {
+      "description": "Street address fields",
+      "examples": ["address", "street_address", "street", "address_line_1"],
+      "prompt": "Suggest the user's street address from their profile"
+    },
+    "city": {
+      "description": "City fields",
+      "examples": ["city", "town", "municipality"],
+      "prompt": "Suggest the user's city from their profile"
+    },
+    "province": {
+      "description": "Province/state fields",
+      "examples": ["province", "state", "region"],
+      "prompt": "Suggest the user's province (use Canadian abbreviations: ON, BC, AB, etc.)"
+    },
+    "postal_code": {
+      "description": "Postal code fields",
+      "examples": ["postal_code", "postal", "zip", "zip_code"],
+      "prompt": "Suggest the user's postal code in Canadian format (X9X 9X9)"
+    },
+    "country": {
+      "description": "Country fields",
+      "examples": ["country", "nation"],
+      "prompt": "Suggest 'Canada' as the default country"
+    },
+    "company": {
+      "description": "Company/organization fields",
+      "examples": ["company", "organization", "employer", "business"],
+      "prompt": "Suggest the user's company name from their profile"
+    },
+    "job_title": {
+      "description": "Job title/position fields",
+      "examples": ["job_title", "position", "title", "role"],
+      "prompt": "Suggest the user's job title from their profile"
+    },
+    "date": {
+      "description": "Date fields",
+      "examples": ["date", "birth_date", "date_of_birth", "dob"],
+      "prompt": "Suggest the current date in YYYY-MM-DD format, or user's birth date if available"
+    }
+  },
+  "localeSettings": {
+    "en-CA": {
+      "dateFormat": "YYYY-MM-DD",
+      "phoneFormat": "(XXX) XXX-XXXX",
+      "postalCodeFormat": "X9X 9X9",
+      "currency": "CAD",
+      "defaultCountry": "Canada"
+    }
+  }
+}
+

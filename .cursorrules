@@ -1,8 +1,21 @@
-# InkFlow - Intelligent PDF Browser with Multi-Provider AI
+# InkFlow - Intelligent PDF Browser with Local LLM Autofill
 
 ## Project Overview
 
-This is an Electron-based desktop application that combines PDF viewing/editing with web browsing capabilities, featuring an AI assistant. The app uses Chromium's BrowserView to provide true embedded browser functionality without iframe restrictions.
+This is an Electron-based desktop application that combines PDF viewing/editing with web browsing capabilities, featuring a local LLM-powered AI assistant and intelligent autofill system. The app uses Chromium's BrowserView to provide true embedded browser functionality without iframe restrictions.
+
+## 🚀 **MAJOR UPGRADE IN PROGRESS: LLM Autofill System (v2.0.0)**
+
+**Status**: Planning Phase - See `LLM_AUTOFILL_UPGRADE_PLAN.md` for complete implementation details.
+
+### **New LLM Autofill Features (Coming in v2.0.0)**
+
+- **Local LLM Integration**: llama.cpp with node-llama-cpp for cross-platform inference
+- **Intelligent Autofill**: Context-aware field suggestions from encrypted user profiles
+- **GPU Acceleration**: Configurable GPU layer offloading for performance
+- **Model Management**: Automatic download and verification of GGUF models
+- **Performance Monitoring**: P95 latency < 3 seconds, memory management
+- **Zero UI Changes**: Backend-only implementation maintaining existing design
 
 ## Architecture & Tech Stack
 
@@ -180,31 +193,69 @@ async function renderPDFPage(pdfBytes: Uint8Array, pageNum: number) {
 
 ### 5. AI Assistant Rules
 
-#### OpenAI Integration (Main Process)
+#### Current System: Local Llama 3.2 (v1.x)
 
 ```javascript
+// Current Llama integration via Ollama
 ipcMain.handle("ask-ai", async (event, prompt) => {
-  const fetch = (await import("node-fetch")).default;
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: "You are a helpful assistant..." },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.2,
-    }),
-  });
-
-  const data = await response.json();
-  return { success: true, content: data.choices[0].message.content };
+  try {
+    return await callLlamaLocal(prompt);
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
+```
+
+#### Future System: LLM Autofill (v2.0.0)
+
+```javascript
+// NEW: LLM Autofill Service
+class LLMService {
+  async loadModel(modelPath, gpuLayers) {
+    // Load GGUF model with llama.cpp
+  }
+
+  async generateSuggestion(context) {
+    // Generate autofill suggestions
+    return { suggestion: "value" | null, question: "text" | null };
+  }
+
+  async unloadModel() {
+    // Free memory when idle
+  }
+}
+
+// NEW: Profile Management
+class ProfileManager {
+  async saveProfile(profileData) {
+    // Encrypted storage with electron-store
+  }
+
+  generateContext(fieldContext, systemContext) {
+    // Create LLM context object
+  }
+}
+```
+
+#### LLM Autofill Integration Rules
+
+```typescript
+// Frontend: Cursor state management
+function handleFieldFocus(field: HTMLInputElement) {
+  field.style.cursor = "wait"; // Processing state
+
+  // Call LLM service
+  const suggestion = await window.electronAPI.getAutofillSuggestion(context);
+
+  if (suggestion.suggestion) {
+    field.value = suggestion.suggestion;
+    field.style.cursor = "text"; // Standard state
+  } else if (suggestion.question) {
+    // Show OS-level input prompt
+    const userInput = await showInputPrompt(suggestion.question);
+    await window.electronAPI.saveToProfile(userInput, fieldType);
+  }
+}
 ```
 
 ### 6. Security & Performance Rules
@@ -334,7 +385,90 @@ const controls = {
 };
 ```
 
-### 10. Code Style Rules
+### 10. LLM Autofill Development Rules (v2.0.0)
+
+#### Backend-Only Implementation
+
+- **NO UI CHANGES**: Maintain existing visual design, layout, and styling
+- **Cursor States Only**: Implement cursor state management for user feedback
+- **Focus Management**: Place caret at end of inserted text, no auto-advance
+- **Error Handling**: Graceful fallback to existing autofill system
+
+#### Performance Requirements
+
+```javascript
+// Performance targets
+const PERFORMANCE_TARGETS = {
+  P95_LATENCY: 3000, // 3 seconds max
+  MIN_RAM_GB: 8, // Minimum hardware
+  IDLE_TIMEOUT: 30, // Minutes before unload
+  MAX_MEMORY_GB: 4, // Model memory limit
+};
+
+// Hardware detection
+async function checkHardwareRequirements() {
+  const ram = await getSystemRAM();
+  if (ram < PERFORMANCE_TARGETS.MIN_RAM_GB) {
+    throw new Error(
+      `Insufficient RAM: ${ram}GB < ${PERFORMANCE_TARGETS.MIN_RAM_GB}GB`
+    );
+  }
+}
+```
+
+#### Model Management Rules
+
+```javascript
+// Model manifest structure
+const MODEL_MANIFEST = {
+  models: [
+    {
+      modelName: "LLaMA 3.2 8B Instruct (Fast)",
+      quantization: "Q4_K_M",
+      downloadUrl: "https://huggingface.co/...",
+      checksum: "sha256:...",
+      minRamGb: 8,
+      gpuRecommended: true,
+    },
+  ],
+};
+
+// Secure model storage
+const MODEL_STORAGE = {
+  path: path.join(app.getPath("userData"), "models"),
+  encryption: "AES-256-GCM",
+  verification: "SHA256",
+};
+```
+
+#### Context Generation Rules
+
+```javascript
+// Context structure for LLM
+const CONTEXT_TEMPLATE = {
+  user_profile: {
+    name: "John Doe",
+    address: { street: "123 King St E", city: "Oshawa" },
+  },
+  system_context: {
+    current_date: "2025-01-03",
+    locale: "en-CA",
+  },
+  field_context: {
+    field_type: "address",
+    field_name: "city",
+  },
+};
+
+// Response format
+const RESPONSE_FORMATS = {
+  SUCCESS: { suggestion: "Oshawa" },
+  QUESTION: { question: "What is your city?" },
+  EMPTY: { suggestion: null },
+};
+```
+
+### 11. Code Style Rules
 
 #### TypeScript
 
@@ -349,6 +483,13 @@ const controls = {
 - **Error Handling**: Always use try-catch for async operations
 - **Documentation**: Add JSDoc comments for complex functions
 - **Security**: Validate all inputs from renderer process
+
+#### LLM Autofill Specific
+
+- **Memory Management**: Always unload models when idle
+- **Performance Logging**: Log all inference times and memory usage
+- **Error Recovery**: Graceful fallback to existing autofill
+- **Cross-Platform**: Test on Windows x64/ARM64, macOS Intel/Apple Silicon
 
 ## Common Patterns
 

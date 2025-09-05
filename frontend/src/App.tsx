@@ -3,6 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import ScrollablePDFViewer from "./components/ScrollablePDFViewer";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -46,24 +47,33 @@ function App() {
 
   // UI State
   const [omniboxValue, setOmniboxValue] = useState("");
-  const [debugLog, setDebugLog] = useState<string[]>([]);
   const [isWebView, setIsWebView] = useState(false);
 
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
-  const [debugEnabled, setDebugEnabled] = useState(false);
-  const [debugExpanded, setDebugExpanded] = useState(true);
 
   // AI Provider settings
-  const [aiProvider, setAiProvider] = useState<"gemini" | "openai" | "llama">(
-    "gemini"
-  );
-  const [geminiApiKey, setGeminiApiKey] = useState("");
-  const [openaiApiKey, setOpenaiApiKey] = useState("");
-  const [llamaModelPath, setLlamaModelPath] = useState("");
+  const [aiProvider] = useState<"llama">("llama");
   const [llamaModelDownloaded, setLlamaModelDownloaded] = useState(false);
   const [modelDownloadProgress, setModelDownloadProgress] = useState(0);
   const [isDownloadingModel, setIsDownloadingModel] = useState(false);
+
+  // Additional Llama status tracking
+  const [llamaStatus, setLlamaStatus] = useState<{
+    reason: string;
+    message: string;
+    ollamaInstalled: boolean;
+  }>({
+    reason: "checking",
+    message: "Checking system status...",
+    ollamaInstalled: false,
+  });
+
+  // Ollama installation state
+  const [isInstallingOllama, setIsInstallingOllama] = useState(false);
+  const [ollamaInstallProgress, setOllamaInstallProgress] = useState(0);
+  const [ollamaInstallStep, setOllamaInstallStep] = useState("");
+  const [ollamaServiceTestFailed, setOllamaServiceTestFailed] = useState(false);
 
   // Function to open settings as a tab
   function openSettingsTab() {
@@ -115,8 +125,30 @@ function App() {
   const [totalPages, setTotalPages] = useState(0);
   const [showTextLayerDebug, setShowTextLayerDebug] = useState(false);
   const [pdfSummary, setPdfSummary] = useState<string>("");
+  const [pdfDocument, setPdfDocument] = useState<any>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detectedContentType, setDetectedContentType] = useState<string>("");
+  const [pdfReloading, setPdfReloading] = useState(false);
+  const [useNewPDFViewer, setUseNewPDFViewer] = useState<boolean>(true);
+
+  // Debug state
+  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [debugExpanded, setDebugExpanded] = useState(false);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+
+  // Enable debug mode with Ctrl+D
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === "d") {
+        e.preventDefault();
+        setDebugEnabled(!debugEnabled);
+        addDebugLog(`Debug mode ${!debugEnabled ? "enabled" : "disabled"}`);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [debugEnabled]);
 
   // Sidebar resize state
   const [sidebarWidth, setSidebarWidth] = useState(320); // Default width
@@ -265,12 +297,43 @@ function App() {
         const result = await window.electronAPI.checkLlamaModel();
         if (result.success) {
           setLlamaModelDownloaded(result.available);
-          if (result.path) {
-            setLlamaModelPath(result.path);
+
+          // Update status based on the result
+          setLlamaStatus({
+            reason: result.reason || "unknown",
+            message: result.message || "Unknown status",
+            ollamaInstalled:
+              result.reason === "model_ready" ||
+              result.reason === "model_not_downloaded",
+          });
+
+          // Detailed logging based on the reason
+          if (result.reason === "ollama_not_installed") {
+            addDebugLog("Ollama is not installed on this system");
+          } else if (result.reason === "model_ready") {
+            addDebugLog(`Llama model ready: ${result.path}`);
+          } else if (result.reason === "model_not_downloaded") {
+            addDebugLog(
+              "Ollama is installed but Llama 3.2 model needs to be downloaded"
+            );
+          } else {
+            addDebugLog(
+              `Llama model check: ${
+                result.available ? "available" : "not found"
+              }`
+            );
           }
-          addDebugLog(
-            `Llama model check: ${result.available ? "available" : "not found"}`
-          );
+
+          if (result.message) {
+            addDebugLog(`Status: ${result.message}`);
+          }
+        } else {
+          addDebugLog(`Error checking Llama model: ${result.error}`);
+          setLlamaStatus({
+            reason: "error",
+            message: result.error || "Failed to check model status",
+            ollamaInstalled: false,
+          });
         }
       } catch (error) {
         addDebugLog(`Error checking Llama model: ${error}`);
@@ -296,14 +359,48 @@ function App() {
       });
     }
 
+    // Set up Ollama installation progress listener
+    if (window.electronAPI?.onOllamaInstallProgress) {
+      window.electronAPI.onOllamaInstallProgress((data) => {
+        setOllamaInstallProgress(data.progress);
+        setOllamaInstallStep(data.step);
+        addDebugLog(`Ollama installation: ${data.step} - ${data.progress}%`);
+      });
+    }
+
     return () => {
       // Cleanup listeners
       if (window.electronAPI?.removeAllListeners) {
         window.electronAPI.removeAllListeners("llama-download-progress");
         window.electronAPI.removeAllListeners("llama-download-complete");
+        window.electronAPI.removeAllListeners("ollama-install-progress");
       }
     };
   }, []);
+
+  // Auto-start Ollama service when Llama provider is selected
+  useEffect(() => {
+    const autoStartOllama = async () => {
+      if (
+        aiProvider === "llama" &&
+        llamaStatus.ollamaInstalled &&
+        !isInstallingOllama
+      ) {
+        try {
+          if (window.electronAPI?.startOllamaService) {
+            const result = await window.electronAPI.startOllamaService();
+            if (result.success) {
+              addDebugLog("Ollama service auto-started for Llama provider");
+            }
+          }
+        } catch (error) {
+          addDebugLog(`Auto-start Ollama failed: ${error}`);
+        }
+      }
+    };
+
+    autoStartOllama();
+  }, [aiProvider, llamaStatus.ollamaInstalled, isInstallingOllama]);
 
   // Configure PDF.js worker
   useEffect(() => {
@@ -330,6 +427,17 @@ function App() {
       addDebugLog("PDF.js worker configured with fallback blob");
     }
   }, []);
+
+  // Debug activeTab changes (only log when PDF-related properties change)
+  useEffect(() => {
+    if (activeTab?.isPDF || activeTab?.pdfBytes) {
+      addDebugLog(
+        `ActiveTab changed: id=${activeTab?.id}, isPDF=${
+          activeTab?.isPDF
+        }, hasPdfBytes=${!!activeTab?.pdfBytes}, pageNum=${activeTab?.pageNum}`
+      );
+    }
+  }, [activeTab]);
 
   // Re-render PDF when scale changes or debug mode toggles
   useEffect(() => {
@@ -459,11 +567,31 @@ function App() {
   }
 
   async function reload() {
-    if (window.electronAPI) {
-      const result = await window.electronAPI.browserReload();
-      if (result.success) {
-        addDebugLog("Page reloaded");
+    if (!window.electronAPI) return;
+
+    try {
+      // Check if current tab is a PDF
+      if (activeTab && activeTab.isPDF && activeTab.pdfBytes) {
+        addDebugLog(`Reloading PDF: ${activeTab.fileName || "Unknown file"}`);
+        setPdfReloading(true);
+
+        // Re-render all PDF pages in scrollable view
+        await renderPDFPagesWorking(activeTab.pdfBytes);
+        addDebugLog("PDF reloaded successfully in scrollable view");
+      } else if (isWebView) {
+        // Handle web page reload
+        const result = await window.electronAPI.browserReload();
+        if (result.success) {
+          addDebugLog("Web page reloaded");
+        }
+      } else {
+        addDebugLog("No content to reload");
       }
+    } catch (error) {
+      addDebugLog(`Error during reload: ${error}`);
+      console.error("Reload error:", error);
+    } finally {
+      setPdfReloading(false);
     }
   }
 
@@ -473,9 +601,16 @@ function App() {
       return;
     }
 
+    addDebugLog("Opening file dialog...");
     try {
       const result = await window.electronAPI.openFileDialog();
-      if (result.success && result.fileBuffer) {
+      addDebugLog(
+        `File dialog result: success=${
+          result.success
+        }, hasData=${!!result.data}, fileName=${result.fileName}`
+      );
+
+      if (result.success && result.data) {
         addDebugLog(`Opening PDF: ${result.fileName}`);
 
         // Hide browser view for PDF mode
@@ -483,7 +618,7 @@ function App() {
         setIsWebView(false);
 
         // Convert ArrayBuffer to Uint8Array
-        const pdfBytes = new Uint8Array(result.fileBuffer);
+        const pdfBytes = new Uint8Array(result.data);
 
         // Validate the PDF file
         addDebugLog(`PDF file size: ${pdfBytes.length} bytes`);
@@ -507,8 +642,8 @@ function App() {
         addDebugLog(`PDF ending: ${pdfEnd.replace(/\n/g, "\\n")}`);
 
         // Update tab with PDF data
-        setTabs((prev) =>
-          prev.map((tab) =>
+        setTabs((prev) => {
+          const updatedTabs = prev.map((tab) =>
             tab.isActive
               ? {
                   ...tab,
@@ -520,19 +655,932 @@ function App() {
                   pageNum: 1,
                 }
               : tab
-          )
-        );
+          );
+          const updatedActiveTab = updatedTabs.find((t) => t.isActive);
+          addDebugLog(
+            `Updated tab state: isPDF=${
+              updatedActiveTab?.isPDF
+            }, hasPdfBytes=${!!updatedActiveTab?.pdfBytes}, title=${
+              updatedActiveTab?.title
+            }`
+          );
+          return updatedTabs;
+        });
 
-        // Set initial scale and render first page
+        // Clear any cached PDF document
+        setPdfDocument(null);
+
+        // Set initial scale and render all pages in scrollable view
         setPdfScale(1.2); // Better initial scale
-        await renderPDFPage(pdfBytes, 1, 1.2);
-        addDebugLog("PDF loaded successfully");
+        await renderPDFPagesWorking(pdfBytes, 1.2);
+        addDebugLog("PDF loaded successfully in scrollable view");
 
         // Automatically generate summary
         generatePdfSummary(pdfBytes);
+      } else {
+        if (!result.success) {
+          addDebugLog("File dialog was canceled or failed");
+        } else if (!result.data) {
+          addDebugLog("No file data received from dialog");
+        }
       }
     } catch (error) {
       addDebugLog(`Error opening PDF: ${error}`);
+    }
+  }
+
+  async function renderPDFPagesWorkingOld(
+    pdfBytes: Uint8Array,
+    scale?: number
+  ) {
+    if (!canvasRef.current) return;
+
+    try {
+      addDebugLog(`Starting PDF rendering for all pages - NEW APPROACH`);
+
+      // Validate PDF bytes before processing
+      if (!pdfBytes || pdfBytes.length === 0) {
+        throw new Error("PDF bytes are empty or invalid");
+      }
+
+      // Check if this looks like a valid PDF
+      const pdfHeader = new TextDecoder().decode(pdfBytes.slice(0, 10));
+      if (!pdfHeader.startsWith("%PDF-")) {
+        throw new Error(`Invalid PDF format. Header: ${pdfHeader}`);
+      }
+
+      addDebugLog(`PDF bytes length: ${pdfBytes.length}`);
+      addDebugLog(`PDF version: ${pdfHeader}`);
+
+      // Use cached PDF document if available, otherwise load it
+      let pdf = pdfDocument;
+      if (!pdf) {
+        addDebugLog(`Loading PDF document (not cached)`);
+
+        // Create a safe copy of the ArrayBuffer to prevent detachment issues
+        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
+        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
+
+        // Enhanced PDF loading with better error handling
+        const loadingTask = pdfjsLib.getDocument({
+          data: pdfBytesCopy,
+          useSystemFonts: true,
+          disableFontFace: false,
+          isEvalSupported: false,
+          disableAutoFetch: false,
+          disableStream: false,
+          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
+          cMapPacked: true,
+          standardFontDataUrl:
+            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
+        });
+
+        // Handle loading progress and errors
+        loadingTask.onProgress = (progress: any) => {
+          if (progress.loaded && progress.total) {
+            const percent = Math.round(
+              (progress.loaded / progress.total) * 100
+            );
+            addDebugLog(`PDF Loading progress: ${percent}%`);
+          }
+        };
+
+        pdf = await loadingTask.promise;
+        setPdfDocument(pdf); // Cache the PDF document
+        addDebugLog(`PDF document loaded and cached successfully`);
+      } else {
+        addDebugLog(`Using cached PDF document`);
+      }
+
+      // Store total pages
+      setTotalPages(pdf.numPages);
+      addDebugLog(`PDF loaded: ${pdf.numPages} pages`);
+
+      // Get the PDF container (the parent of pdf-page-container)
+      const pdfPageContainer = canvasRef.current.parentElement;
+      const pdfContainer = pdfPageContainer?.parentElement;
+
+      if (!pdfContainer) {
+        throw new Error("Could not find PDF container");
+      }
+
+      addDebugLog(`PDF container found: ${pdfContainer.className}`);
+
+      // Clear the entire PDF container and make it scrollable
+      pdfContainer.innerHTML = "";
+
+      // Ensure PDF container has proper height for scrolling
+      pdfContainer.style.cssText = `
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #2a2a2a;
+        overflow: hidden;
+        height: 100%;
+        position: relative;
+      `;
+
+      // Create the toolbar
+      const toolbar = document.createElement("div");
+      toolbar.className = "pdf-toolbar";
+      toolbar.style.cssText = `
+        height: 60px;
+        background: #333;
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        color: white;
+        flex-shrink: 0;
+      `;
+      toolbar.innerHTML = `
+        <h3>${pdf.numPages} page${
+        pdf.numPages !== 1 ? "s" : ""
+      } - Scroll to navigate</h3>
+      `;
+
+      // Create a scrollable content area
+      const scrollableContent = document.createElement("div");
+      scrollableContent.className = "pdf-content";
+      scrollableContent.style.cssText = `
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 20px;
+        background: #f5f5f5;
+        display: block;
+        height: 100%;
+        box-sizing: border-box;
+      `;
+
+      // Add toolbar and content to PDF container
+      pdfContainer.appendChild(toolbar);
+      pdfContainer.appendChild(scrollableContent);
+
+      // Calculate optimal scale
+      const firstPage = await pdf.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1.0 });
+      const containerWidth = pdfContainer.clientWidth - 40; // Account for padding
+      const finalScale =
+        scale || pdfScale || Math.min(containerWidth / viewport.width, 1.5);
+
+      addDebugLog(`Using scale: ${finalScale}`);
+      addDebugLog(`Container width: ${containerWidth}px`);
+
+      // Render all pages
+      const pageCanvases: HTMLCanvasElement[] = [];
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        addDebugLog(`Rendering page ${pageNum} of ${pdf.numPages}`);
+
+        const page = await pdf.getPage(pageNum);
+        const pageViewport = page.getViewport({ scale: finalScale });
+
+        // Create page wrapper
+        const pageWrapper = document.createElement("div");
+        pageWrapper.className = "page";
+        pageWrapper.style.cssText = `
+          background: white;
+          margin: 0 auto 20px auto;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          display: block;
+          max-width: 100%;
+          width: fit-content;
+        `;
+
+        // Add page number
+        const pageNumberDiv = document.createElement("div");
+        pageNumberDiv.textContent = `Page ${pageNum} of ${pdf.numPages}`;
+        pageNumberDiv.style.cssText = `
+          margin-bottom: 15px;
+          color: #666;
+          font-size: 14px;
+          font-weight: 500;
+          text-align: center;
+        `;
+
+        // Create canvas for this page
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = pageViewport.width;
+        pageCanvas.height = pageViewport.height;
+        pageCanvas.style.cssText = `
+          display: block;
+          max-width: 100%;
+          height: auto;
+          border: 1px solid #ddd;
+        `;
+
+        // Clear canvas with white background
+        const context = pageCanvas.getContext("2d")!;
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+        // Render the page
+        await page.render({
+          canvasContext: context,
+          viewport: pageViewport,
+        }).promise;
+
+        // Assemble page wrapper
+        pageWrapper.appendChild(pageNumberDiv);
+        pageWrapper.appendChild(pageCanvas);
+        scrollableContent.appendChild(pageWrapper);
+        pageCanvases.push(pageCanvas);
+
+        addDebugLog(`Page ${pageNum} rendered successfully`);
+      }
+
+      // Add the scrollable content to the PDF container
+      pdfContainer.appendChild(scrollableContent);
+
+      // Store references for cleanup
+      (scrollableContent as any).pageCanvases = pageCanvases;
+
+      addDebugLog(
+        `All ${pdf.numPages} pages rendered successfully in scrollable view`
+      );
+      addDebugLog(
+        `Scrollable content dimensions: ${scrollableContent.clientWidth}x${scrollableContent.clientHeight}`
+      );
+      addDebugLog(
+        `Scrollable content scroll height: ${scrollableContent.scrollHeight}px`
+      );
+      addDebugLog(
+        `Can scroll: ${
+          scrollableContent.scrollHeight > scrollableContent.clientHeight
+        }`
+      );
+      addDebugLog(
+        `PDF container dimensions: ${pdfContainer.clientWidth}x${pdfContainer.clientHeight}`
+      );
+      addDebugLog(
+        `PDF container scroll height: ${pdfContainer.scrollHeight}px`
+      );
+
+      // Force a minimum height to ensure scrolling works
+      if (scrollableContent.scrollHeight <= scrollableContent.clientHeight) {
+        addDebugLog("Forcing minimum height for scrolling");
+        scrollableContent.style.minHeight = "2000px";
+      }
+
+      // Add scroll event listener for debugging
+      scrollableContent.addEventListener("scroll", () => {
+        addDebugLog(`Scroll position: ${scrollableContent.scrollTop}px`);
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      addDebugLog(`Error rendering PDF: ${errorMessage}`);
+      console.error("PDF Rendering Error:", error);
+
+      // Show error message
+      const container = canvasRef.current?.parentElement?.parentElement;
+      if (container) {
+        container.innerHTML = `
+          <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #ff6b6b;
+            font-size: 16px;
+            text-align: center;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            margin: 20px;
+          ">
+            <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+            <div style="font-weight: 600; margin-bottom: 8px;">PDF Rendering Error</div>
+            <div style="font-size: 14px; opacity: 0.8;">${errorMessage}</div>
+          </div>
+        `;
+      }
+    }
+  }
+
+  async function renderPDFPagesWorkingUltraSimple(
+    pdfBytes: Uint8Array,
+    scale?: number
+  ) {
+    if (!canvasRef.current) return;
+
+    try {
+      addDebugLog(`Starting PDF rendering - SIMPLE SCROLLABLE APPROACH`);
+
+      // Validate PDF bytes before processing
+      if (!pdfBytes || pdfBytes.length === 0) {
+        throw new Error("PDF bytes are empty or invalid");
+      }
+
+      // Check if this looks like a valid PDF
+      const pdfHeader = new TextDecoder().decode(pdfBytes.slice(0, 10));
+      if (!pdfHeader.startsWith("%PDF-")) {
+        throw new Error(`Invalid PDF format. Header: ${pdfHeader}`);
+      }
+
+      addDebugLog(`PDF bytes length: ${pdfBytes.length}`);
+      addDebugLog(`PDF version: ${pdfHeader}`);
+
+      // Use cached PDF document if available, otherwise load it
+      let pdf = pdfDocument;
+      if (!pdf) {
+        addDebugLog(`Loading PDF document (not cached)`);
+
+        // Create a safe copy of the ArrayBuffer to prevent detachment issues
+        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
+        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
+
+        // Enhanced PDF loading with better error handling
+        const loadingTask = pdfjsLib.getDocument({
+          data: pdfBytesCopy,
+          useSystemFonts: true,
+          disableFontFace: false,
+          isEvalSupported: false,
+          disableAutoFetch: false,
+          disableStream: false,
+          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
+          cMapPacked: true,
+          standardFontDataUrl:
+            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
+        });
+
+        // Handle loading progress and errors
+        loadingTask.onProgress = (progress: any) => {
+          if (progress.loaded && progress.total) {
+            const percent = Math.round(
+              (progress.loaded / progress.total) * 100
+            );
+            addDebugLog(`PDF Loading progress: ${percent}%`);
+          }
+        };
+
+        pdf = await loadingTask.promise;
+        setPdfDocument(pdf); // Cache the PDF document
+        addDebugLog(`PDF document loaded and cached successfully`);
+      } else {
+        addDebugLog(`Using cached PDF document`);
+      }
+
+      // Store total pages
+      setTotalPages(pdf.numPages);
+      addDebugLog(`PDF loaded: ${pdf.numPages} pages`);
+
+      // Get the pdf-page-container and make it scrollable
+      const container = canvasRef.current.parentElement;
+      if (!container) return;
+
+      addDebugLog(`PDF page container found: ${container.className}`);
+
+      // Clear existing content
+      container.innerHTML = "";
+
+      // Make the container scrollable - THIS IS THE KEY FIX
+      container.style.cssText = `
+        position: relative;
+        display: block;
+        height: 100%;
+        min-height: 600px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        background: #f5f5f5;
+        padding: 20px;
+        box-sizing: border-box;
+      `;
+
+      // Calculate optimal scale
+      const firstPage = await pdf.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1.0 });
+      const containerWidth = container.clientWidth - 40; // Account for padding
+      const finalScale =
+        scale || pdfScale || Math.min(containerWidth / viewport.width, 1.5);
+
+      addDebugLog(`Using scale: ${finalScale}`);
+      addDebugLog(`Container width: ${containerWidth}px`);
+
+      // Render all pages
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        addDebugLog(`Rendering page ${pageNum} of ${pdf.numPages}`);
+
+        const page = await pdf.getPage(pageNum);
+        const pageViewport = page.getViewport({ scale: finalScale });
+
+        // Create page wrapper
+        const pageWrapper = document.createElement("div");
+        pageWrapper.className = "pdf-page";
+        pageWrapper.style.cssText = `
+          background: white;
+          margin: 0 auto 20px auto;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          display: block;
+          max-width: 100%;
+          width: fit-content;
+        `;
+
+        // Add page number
+        const pageNumberDiv = document.createElement("div");
+        pageNumberDiv.textContent = `Page ${pageNum} of ${pdf.numPages}`;
+        pageNumberDiv.style.cssText = `
+          margin-bottom: 15px;
+          color: #666;
+          font-size: 14px;
+          font-weight: 500;
+          text-align: center;
+        `;
+
+        // Create canvas for this page
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = pageViewport.width;
+        pageCanvas.height = pageViewport.height;
+        pageCanvas.style.cssText = `
+          display: block;
+          max-width: 100%;
+          height: auto;
+          border: 1px solid #ddd;
+        `;
+
+        // Clear canvas with white background
+        const context = pageCanvas.getContext("2d")!;
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+        // Render the page
+        await page.render({
+          canvasContext: context,
+          viewport: pageViewport,
+        }).promise;
+
+        // Assemble page wrapper
+        pageWrapper.appendChild(pageNumberDiv);
+        pageWrapper.appendChild(pageCanvas);
+        container.appendChild(pageWrapper);
+
+        addDebugLog(`Page ${pageNum} rendered successfully`);
+      }
+
+      addDebugLog(
+        `All ${pdf.numPages} pages rendered successfully in scrollable view`
+      );
+      addDebugLog(
+        `Container dimensions: ${container.clientWidth}x${container.clientHeight}`
+      );
+      addDebugLog(`Container scroll height: ${container.scrollHeight}px`);
+      addDebugLog(
+        `Can scroll: ${container.scrollHeight > container.clientHeight}`
+      );
+
+      // Add scroll event listener for debugging
+      container.addEventListener("scroll", () => {
+        addDebugLog(`Scroll position: ${container.scrollTop}px`);
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      addDebugLog(`Error rendering PDF: ${errorMessage}`);
+      console.error("PDF Rendering Error:", error);
+
+      // Show error message
+      const container = canvasRef.current?.parentElement;
+      if (container) {
+        container.innerHTML = `
+          <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #ff6b6b;
+            font-size: 16px;
+            text-align: center;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            margin: 20px;
+          ">
+            <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+            <div style="font-weight: 600; margin-bottom: 8px;">PDF Rendering Error</div>
+            <div style="font-size: 14px; opacity: 0.8;">${errorMessage}</div>
+          </div>
+        `;
+      }
+    }
+  }
+
+  async function renderPDFPagesWorking(pdfBytes: Uint8Array, scale?: number) {
+    if (!canvasRef.current) return;
+
+    try {
+      addDebugLog(`Starting PDF rendering - SIMPLE WORKING APPROACH`);
+
+      // Validate PDF bytes
+      if (!pdfBytes || pdfBytes.length === 0) {
+        throw new Error("PDF bytes are empty or invalid");
+      }
+
+      // Load PDF document
+      let pdf = pdfDocument;
+      if (!pdf) {
+        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
+        const loadingTask = pdfjsLib.getDocument({
+          data: pdfBytesCopy,
+          useSystemFonts: true,
+          disableFontFace: false,
+          isEvalSupported: false,
+          disableAutoFetch: false,
+          disableStream: false,
+        });
+
+        pdf = await loadingTask.promise;
+        setPdfDocument(pdf);
+        addDebugLog(`PDF document loaded: ${pdf.numPages} pages`);
+      }
+
+      setTotalPages(pdf.numPages);
+
+      // Get the main content area and replace it with a simple scrollable container
+      const mainContent = document.querySelector(".main-content");
+      if (!mainContent) {
+        throw new Error("Could not find main content area");
+      }
+
+      // Create a simple scrollable PDF viewer using normal document flow
+      mainContent.innerHTML = `
+        <div style="
+          width: 100%;
+          height: 100%;
+          overflow-y: auto;
+          overflow-x: hidden;
+          background: #f5f5f5;
+          padding: 20px;
+          box-sizing: border-box;
+        ">
+          <div id="pdf-pages" style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            min-height: calc(100vh - 200px);
+          ">
+            <!-- PDF pages will be rendered here -->
+          </div>
+        </div>
+      `;
+
+      const pagesContainer = document.getElementById("pdf-pages");
+      if (!pagesContainer) {
+        throw new Error("Could not create pages container");
+      }
+
+      // Calculate scale
+      const firstPage = await pdf.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1.0 });
+      const containerWidth = mainContent.clientWidth - 40;
+      const finalScale =
+        scale || pdfScale || Math.min(containerWidth / viewport.width, 1.5);
+
+      addDebugLog(`Using scale: ${finalScale}`);
+
+      // Render all pages
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const pageViewport = page.getViewport({ scale: finalScale });
+
+        // Create page container
+        const pageContainer = document.createElement("div");
+        pageContainer.style.cssText = `
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          width: fit-content;
+          max-width: 100%;
+        `;
+
+        // Add page number
+        const pageNumber = document.createElement("div");
+        pageNumber.textContent = `Page ${pageNum} of ${pdf.numPages}`;
+        pageNumber.style.cssText = `
+          margin-bottom: 15px;
+          color: #666;
+          font-size: 14px;
+          font-weight: 500;
+          text-align: center;
+        `;
+
+        // Create canvas
+        const canvas = document.createElement("canvas");
+        canvas.width = pageViewport.width;
+        canvas.height = pageViewport.height;
+        canvas.style.cssText = `
+          display: block;
+          max-width: 100%;
+          height: auto;
+          border: 1px solid #ddd;
+        `;
+
+        // Render page
+        const context = canvas.getContext("2d")!;
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({
+          canvasContext: context,
+          viewport: pageViewport,
+        }).promise;
+
+        // Assemble page
+        pageContainer.appendChild(pageNumber);
+        pageContainer.appendChild(canvas);
+        pagesContainer.appendChild(pageContainer);
+
+        addDebugLog(`Page ${pageNum} rendered`);
+      }
+
+      addDebugLog(`All ${pdf.numPages} pages rendered successfully`);
+
+      // Debug scrolling
+      const scrollContainer = mainContent.querySelector("div");
+      if (scrollContainer) {
+        addDebugLog(
+          `Scroll container height: ${scrollContainer.clientHeight}px`
+        );
+        addDebugLog(
+          `Scroll container scroll height: ${scrollContainer.scrollHeight}px`
+        );
+        addDebugLog(
+          `Can scroll: ${
+            scrollContainer.scrollHeight > scrollContainer.clientHeight
+          }`
+        );
+
+        // Force scroll test
+        if (scrollContainer.scrollHeight <= scrollContainer.clientHeight) {
+          addDebugLog(
+            "WARNING: Content height is not greater than container height - scrolling may not work"
+          );
+          // Add extra height to force scrolling
+          scrollContainer.style.minHeight = "200vh";
+          addDebugLog("Added min-height: 200vh to force scrolling");
+        }
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      addDebugLog(`Error rendering PDF: ${errorMessage}`);
+      console.error("PDF Rendering Error:", error);
+
+      const mainContent = document.querySelector(".main-content");
+      if (mainContent) {
+        mainContent.innerHTML = `
+          <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #ff6b6b;
+            font-size: 16px;
+            text-align: center;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            margin: 20px;
+          ">
+            <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+            <div style="font-weight: 600; margin-bottom: 8px;">PDF Rendering Error</div>
+            <div style="font-size: 14px; opacity: 0.8;">${errorMessage}</div>
+          </div>
+        `;
+      }
+    }
+  }
+
+  async function renderPDFPagesWorkingNew(
+    pdfBytes: Uint8Array,
+    scale?: number
+  ) {
+    try {
+      addDebugLog(`Starting PDF rendering - COMPLETELY NEW APPROACH`);
+
+      // Validate PDF bytes before processing
+      if (!pdfBytes || pdfBytes.length === 0) {
+        throw new Error("PDF bytes are empty or invalid");
+      }
+
+      // Check if this looks like a valid PDF
+      const pdfHeader = new TextDecoder().decode(pdfBytes.slice(0, 10));
+      if (!pdfHeader.startsWith("%PDF-")) {
+        throw new Error(`Invalid PDF format. Header: ${pdfHeader}`);
+      }
+
+      addDebugLog(`PDF bytes length: ${pdfBytes.length}`);
+      addDebugLog(`PDF version: ${pdfHeader}`);
+
+      // Use cached PDF document if available, otherwise load it
+      let pdf = pdfDocument;
+      if (!pdf) {
+        addDebugLog(`Loading PDF document (not cached)`);
+
+        // Create a safe copy of the ArrayBuffer to prevent detachment issues
+        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
+        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
+
+        // Enhanced PDF loading with better error handling
+        const loadingTask = pdfjsLib.getDocument({
+          data: pdfBytesCopy,
+          useSystemFonts: true,
+          disableFontFace: false,
+          isEvalSupported: false,
+          disableAutoFetch: false,
+          disableStream: false,
+          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
+          cMapPacked: true,
+          standardFontDataUrl:
+            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
+        });
+
+        // Handle loading progress and errors
+        loadingTask.onProgress = (progress: any) => {
+          if (progress.loaded && progress.total) {
+            const percent = Math.round(
+              (progress.loaded / progress.total) * 100
+            );
+            addDebugLog(`PDF Loading progress: ${percent}%`);
+          }
+        };
+
+        pdf = await loadingTask.promise;
+        setPdfDocument(pdf); // Cache the PDF document
+        addDebugLog(`PDF document loaded and cached successfully`);
+      } else {
+        addDebugLog(`Using cached PDF document`);
+      }
+
+      // Store total pages
+      setTotalPages(pdf.numPages);
+      addDebugLog(`PDF loaded: ${pdf.numPages} pages`);
+
+      // COMPLETELY NEW APPROACH - Find the main content area and replace it entirely
+      const mainContent = document.querySelector(".main-content");
+      if (!mainContent) {
+        throw new Error("Could not find main content area");
+      }
+
+      addDebugLog(`Found main content area: ${mainContent.className}`);
+
+      // Clear the entire main content and create a simple scrollable container
+      mainContent.innerHTML = `
+        <div id="pdf-viewer-container" style="
+          width: 100%;
+          height: 100%;
+          overflow-y: auto;
+          overflow-x: hidden;
+          background: #f5f5f5;
+          padding: 20px;
+          box-sizing: border-box;
+        ">
+          <div id="pdf-pages-container" style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            min-height: 100%;
+          ">
+            <!-- Pages will be inserted here -->
+          </div>
+        </div>
+      `;
+
+      const pdfContainer = document.getElementById("pdf-pages-container");
+      if (!pdfContainer) {
+        throw new Error("Could not create PDF container");
+      }
+
+      // Calculate optimal scale
+      const firstPage = await pdf.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1.0 });
+      const containerWidth = mainContent.clientWidth - 40; // Account for padding
+      const finalScale =
+        scale || pdfScale || Math.min(containerWidth / viewport.width, 1.5);
+
+      addDebugLog(`Using scale: ${finalScale}`);
+      addDebugLog(`Container width: ${containerWidth}px`);
+
+      // Render all pages
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        addDebugLog(`Rendering page ${pageNum} of ${pdf.numPages}`);
+
+        const page = await pdf.getPage(pageNum);
+        const pageViewport = page.getViewport({ scale: finalScale });
+
+        // Create page wrapper
+        const pageWrapper = document.createElement("div");
+        pageWrapper.style.cssText = `
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          width: fit-content;
+          max-width: 100%;
+        `;
+
+        // Add page number
+        const pageNumberDiv = document.createElement("div");
+        pageNumberDiv.textContent = `Page ${pageNum} of ${pdf.numPages}`;
+        pageNumberDiv.style.cssText = `
+          margin-bottom: 15px;
+          color: #666;
+          font-size: 14px;
+          font-weight: 500;
+          text-align: center;
+        `;
+
+        // Create canvas for this page
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = pageViewport.width;
+        pageCanvas.height = pageViewport.height;
+        pageCanvas.style.cssText = `
+          display: block;
+          max-width: 100%;
+          height: auto;
+          border: 1px solid #ddd;
+        `;
+
+        // Clear canvas with white background
+        const context = pageCanvas.getContext("2d")!;
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+        // Render the page
+        await page.render({
+          canvasContext: context,
+          viewport: pageViewport,
+        }).promise;
+
+        // Assemble page wrapper
+        pageWrapper.appendChild(pageNumberDiv);
+        pageWrapper.appendChild(pageCanvas);
+        pdfContainer.appendChild(pageWrapper);
+
+        addDebugLog(`Page ${pageNum} rendered successfully`);
+      }
+
+      addDebugLog(
+        `All ${pdf.numPages} pages rendered successfully in scrollable view`
+      );
+
+      // Add scroll event listener for debugging
+      const scrollContainer = document.getElementById("pdf-viewer-container");
+      if (scrollContainer) {
+        scrollContainer.addEventListener("scroll", () => {
+          addDebugLog(`Scroll position: ${scrollContainer.scrollTop}px`);
+        });
+
+        addDebugLog(
+          `Scroll container dimensions: ${scrollContainer.clientWidth}x${scrollContainer.clientHeight}`
+        );
+        addDebugLog(
+          `Scroll container scroll height: ${scrollContainer.scrollHeight}px`
+        );
+        addDebugLog(
+          `Can scroll: ${
+            scrollContainer.scrollHeight > scrollContainer.clientHeight
+          }`
+        );
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      addDebugLog(`Error rendering PDF: ${errorMessage}`);
+      console.error("PDF Rendering Error:", error);
+
+      // Show error message
+      const mainContent = document.querySelector(".main-content");
+      if (mainContent) {
+        mainContent.innerHTML = `
+          <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #ff6b6b;
+            font-size: 16px;
+            text-align: center;
+            padding: 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            margin: 20px;
+          ">
+            <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+            <div style="font-weight: 600; margin-bottom: 8px;">PDF Rendering Error</div>
+            <div style="font-size: 14px; opacity: 0.8;">${errorMessage}</div>
+          </div>
+        `;
+      }
     }
   }
 
@@ -560,34 +1608,52 @@ function App() {
       addDebugLog(`PDF bytes length: ${pdfBytes.length}`);
       addDebugLog(`PDF version: ${pdfHeader}`);
 
-      // Create a safe copy of the ArrayBuffer to prevent detachment issues
-      const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
-      addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
+      // Use cached PDF document if available, otherwise load it
+      let pdf = pdfDocument;
+      if (!pdf) {
+        addDebugLog(`Loading PDF document (not cached)`);
 
-      // Enhanced PDF loading with better error handling
-      const loadingTask = pdfjsLib.getDocument({
-        data: pdfBytesCopy,
-        useSystemFonts: true,
-        disableFontFace: false,
-        isEvalSupported: false,
-        disableAutoFetch: false,
-        disableStream: false,
-        cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
-        cMapPacked: true,
-        standardFontDataUrl:
-          "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
-      });
+        // Create a safe copy of the ArrayBuffer to prevent detachment issues
+        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
+        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
 
-      // Handle loading progress and errors
-      loadingTask.onProgress = (progress: any) => {
-        if (progress.loaded && progress.total) {
-          const percent = Math.round((progress.loaded / progress.total) * 100);
-          addDebugLog(`PDF Loading progress: ${percent}%`);
-        }
-      };
+        // Enhanced PDF loading with better error handling
+        const loadingTask = pdfjsLib.getDocument({
+          data: pdfBytesCopy,
+          useSystemFonts: true,
+          disableFontFace: false,
+          isEvalSupported: false,
+          disableAutoFetch: false,
+          disableStream: false,
+          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
+          cMapPacked: true,
+          standardFontDataUrl:
+            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
+        });
 
-      const pdf = await loadingTask.promise;
-      addDebugLog(`PDF document loaded successfully`);
+        // Handle loading progress and errors
+        loadingTask.onProgress = (progress: any) => {
+          if (progress.loaded && progress.total) {
+            const percent = Math.round(
+              (progress.loaded / progress.total) * 100
+            );
+            addDebugLog(`PDF Loading progress: ${percent}%`);
+          }
+        };
+
+        pdf = await loadingTask.promise;
+        setPdfDocument(pdf); // Cache the PDF document
+        addDebugLog(`PDF document loaded and cached successfully`);
+      } else {
+        addDebugLog(`Using cached PDF document`);
+      }
+
+      // Validate page number
+      if (pageNum < 1 || pageNum > pdf.numPages) {
+        throw new Error(
+          `Invalid page number: ${pageNum}. PDF has ${pdf.numPages} pages.`
+        );
+      }
 
       const page = await pdf.getPage(pageNum);
       addDebugLog(`Page ${pageNum} loaded successfully`);
@@ -631,13 +1697,17 @@ function App() {
       // Clear canvas before rendering
       context.clearRect(0, 0, canvas.width, canvas.height);
 
-      addDebugLog(`Starting page render...`);
+      // Fill with white background to prevent artifacts
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      addDebugLog(`Starting page render for page ${pageNum}...`);
       await page.render({
         canvasContext: context,
         viewport: viewport,
         canvas: canvas,
       }).promise;
-      addDebugLog(`Page render completed`);
+      addDebugLog(`Page ${pageNum} render completed successfully`);
 
       // Render text layer for text selection
       addDebugLog(`Starting text layer render...`);
@@ -652,7 +1722,9 @@ function App() {
 
       addDebugLog(`PDF page ${pageNum} rendered successfully`);
     } catch (error) {
-      addDebugLog(`Error rendering PDF: ${error}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      addDebugLog(`Error rendering PDF page ${pageNum}: ${errorMessage}`);
       console.error("PDF Rendering Error:", error);
 
       // Show error message on canvas
@@ -668,21 +1740,21 @@ function App() {
         context.fillRect(0, 0, canvas.width, canvas.height);
 
         context.fillStyle = "#ef4444";
-        context.font = "16px Arial";
+        context.font = "bold 16px Arial";
         context.textAlign = "center";
-        context.fillText("PDF Rendering Error", canvas.width / 2, 150);
+        context.fillText("PDF Rendering Error", canvas.width / 2, 120);
 
         context.fillStyle = "#ffffff";
         context.font = "14px Arial";
         context.fillText(
-          "This PDF cannot be displayed properly.",
+          `Page ${pageNum} cannot be displayed properly.`,
           canvas.width / 2,
-          180
+          150
         );
         context.fillText(
           "The file may be corrupted or incompatible.",
           canvas.width / 2,
-          200
+          170
         );
 
         context.fillStyle = "#60a5fa";
@@ -690,13 +1762,18 @@ function App() {
         context.fillText(
           "Try opening the file in a different PDF viewer.",
           canvas.width / 2,
-          240
+          200
         );
         context.fillText(
           "Check the debug log for more details.",
           canvas.width / 2,
-          260
+          220
         );
+
+        // Show the actual error message
+        context.fillStyle = "#ffa500";
+        context.font = "11px monospace";
+        context.fillText(`Error: ${errorMessage}`, canvas.width / 2, 250);
       }
     }
   }
@@ -820,7 +1897,9 @@ function App() {
 
     setSummaryLoading(true);
     setPdfSummary("");
-    addDebugLog("Generating PDF summary with Gemini AI...");
+    addDebugLog(
+      `Generating PDF summary with ${aiProvider.toUpperCase()} AI...`
+    );
 
     try {
       // Extract text content from PDF (function will handle ArrayBuffer copying)
@@ -842,19 +1921,90 @@ function App() {
           : textContent;
 
       // Detect content type and create appropriate prompt
-      const contentType = detectContentType(limitedContent);
+      const contentType = "general_document"; // Simplified content type detection
       setDetectedContentType(contentType);
       addDebugLog(`Detected content type: ${contentType}`);
       const enhancedPrompt = createEnhancedPrompt(limitedContent, contentType);
 
-      // Call Gemini API for analysis
-      const result = await window.electronAPI.analyzePdfWithGemini({
+      // Use Llama for analysis (no API key needed)
+
+      // If using Llama, ensure Ollama service is running
+      if (aiProvider === "llama") {
+        addDebugLog("Ensuring Ollama service is running for PDF analysis...");
+
+        // First test if Ollama is installed
+        try {
+          const installTest = await window.electronAPI.testOllamaInstallation();
+          addDebugLog(
+            `Ollama installation test: success=${installTest.success}, message=${installTest.message}, error=${installTest.error}`
+          );
+
+          if (!installTest.success) {
+            addDebugLog(`Ollama is not installed: ${installTest.error}`);
+            setPdfSummary(
+              `Error: Ollama is not installed or not accessible. ${installTest.error}`
+            );
+            setSummaryLoading(false);
+            return;
+          }
+
+          addDebugLog(`Ollama is installed: ${installTest.version}`);
+        } catch (error) {
+          addDebugLog(`Error testing Ollama installation: ${error}`);
+        }
+
+        try {
+          const serviceResult = await window.electronAPI.startOllamaService();
+          addDebugLog(
+            `Ollama service result: success=${serviceResult.success}, message=${serviceResult.message}, error=${serviceResult.error}`
+          );
+
+          if (!serviceResult.success) {
+            addDebugLog(
+              `Failed to start Ollama service: ${serviceResult.error}`
+            );
+            setPdfSummary(
+              `Error: Could not start Ollama service. ${serviceResult.error}`
+            );
+            setSummaryLoading(false);
+            return;
+          }
+          addDebugLog(`Ollama service is ready: ${serviceResult.message}`);
+
+          // Test the connection to make sure it's actually working
+          try {
+            const testResult = await window.electronAPI.testOllamaConnection();
+            addDebugLog(
+              `Ollama connection test: success=${testResult.success}, message=${testResult.message}`
+            );
+            if (!testResult.success) {
+              addDebugLog(`Ollama connection test failed: ${testResult.error}`);
+              setPdfSummary(
+                `Error: Ollama service started but connection test failed. ${testResult.error}`
+              );
+              setSummaryLoading(false);
+              return;
+            }
+          } catch (error) {
+            addDebugLog(`Error testing Ollama connection: ${error}`);
+          }
+        } catch (error) {
+          addDebugLog(`Error starting Ollama service: ${error}`);
+          setPdfSummary(`Error: Could not start Ollama service. ${error}`);
+          setSummaryLoading(false);
+          return;
+        }
+      }
+
+      // Use the universal PDF analysis endpoint with Llama 3.2
+      const result = await window.electronAPI.analyzePdf({
         textContent: enhancedPrompt,
+        provider: "llama",
       });
 
-      if (result.success && result.summary) {
-        setPdfSummary(result.summary);
-        addDebugLog("PDF summary generated successfully");
+      if (result.success && result.content) {
+        setPdfSummary(result.content);
+        addDebugLog("PDF summary generated successfully with Llama 3.2");
       } else {
         setPdfSummary(
           `Error generating summary: ${result.error || "Unknown error"}`
@@ -867,95 +2017,6 @@ function App() {
     } finally {
       setSummaryLoading(false);
     }
-  }
-
-  function detectContentType(textContent: string): string {
-    const text = textContent.toLowerCase();
-
-    // Academic/Research patterns
-    if (
-      text.includes("abstract") &&
-      text.includes("introduction") &&
-      text.includes("methodology")
-    ) {
-      return "academic_paper";
-    }
-    if (
-      text.includes("research") &&
-      text.includes("methodology") &&
-      text.includes("conclusion")
-    ) {
-      return "research_paper";
-    }
-
-    // Business documents
-    if (
-      text.includes("financial") &&
-      (text.includes("revenue") || text.includes("quarterly"))
-    ) {
-      return "financial_report";
-    }
-    if (
-      text.includes("annual report") ||
-      text.includes("10-k") ||
-      text.includes("10-q")
-    ) {
-      return "annual_report";
-    }
-    if (text.includes("employment") && text.includes("verification")) {
-      return "employment_verification";
-    }
-    if (text.includes("contract") && text.includes("agreement")) {
-      return "legal_contract";
-    }
-    if (text.includes("invoice") || text.includes("billing")) {
-      return "invoice_bill";
-    }
-
-    // Technical documents
-    if (text.includes("manual") && text.includes("instructions")) {
-      return "technical_manual";
-    }
-    if (text.includes("specification") || text.includes("requirements")) {
-      return "technical_spec";
-    }
-    if (text.includes("api") && text.includes("documentation")) {
-      return "api_documentation";
-    }
-
-    // Educational content
-    if (text.includes("chapter") && text.includes("exercises")) {
-      return "textbook";
-    }
-    if (text.includes("curriculum") || text.includes("syllabus")) {
-      return "educational_material";
-    }
-
-    // News and articles
-    if (text.includes("news") || text.includes("breaking")) {
-      return "news_article";
-    }
-    if (text.includes("blog") || text.includes("opinion")) {
-      return "blog_article";
-    }
-
-    // Medical/Health
-    if (text.includes("patient") && text.includes("medical")) {
-      return "medical_document";
-    }
-
-    // Government/Legal
-    if (text.includes("government") || text.includes("policy")) {
-      return "government_document";
-    }
-
-    // Marketing materials
-    if (text.includes("brochure") || text.includes("marketing")) {
-      return "marketing_material";
-    }
-
-    // Default to general document
-    return "general_document";
   }
 
   function createEnhancedPrompt(
@@ -1113,140 +2174,56 @@ ${textContent}`;
   function zoomIn() {
     const newScale = Math.min(pdfScale * 1.25, 3.0); // Max 3x zoom
     setPdfScale(newScale);
-    if (activeTab && activeTab.pdfBytes && activeTab.pageNum) {
-      renderPDFPage(activeTab.pdfBytes, activeTab.pageNum, newScale);
+    if (activeTab && activeTab.pdfBytes) {
+      renderPDFPagesWorking(activeTab.pdfBytes, newScale);
     }
   }
 
   function zoomOut() {
     const newScale = Math.max(pdfScale * 0.8, 0.25); // Min 0.25x zoom
     setPdfScale(newScale);
-    if (activeTab && activeTab.pdfBytes && activeTab.pageNum) {
-      renderPDFPage(activeTab.pdfBytes, activeTab.pageNum, newScale);
+    if (activeTab && activeTab.pdfBytes) {
+      renderPDFPagesWorking(activeTab.pdfBytes, newScale);
     }
   }
 
   function resetZoom() {
     setPdfScale(1.0);
-    if (activeTab && activeTab.pdfBytes && activeTab.pageNum) {
-      renderPDFPage(activeTab.pdfBytes, activeTab.pageNum, 1.0);
+    if (activeTab && activeTab.pdfBytes) {
+      renderPDFPagesWorking(activeTab.pdfBytes, 1.0);
     }
   }
 
   async function fitToWidth() {
-    if (
-      !canvasRef.current ||
-      !activeTab ||
-      !activeTab.pdfBytes ||
-      !activeTab.pageNum
-    )
-      return;
+    if (!canvasRef.current || !activeTab || !activeTab.pdfBytes) return;
     try {
       const pdf = await pdfjsLib.getDocument({ data: activeTab.pdfBytes })
         .promise;
-      const page = await pdf.getPage(activeTab.pageNum);
+      const page = await pdf.getPage(1); // Use first page for scale calculation
       const baseViewport = page.getViewport({ scale: 1.0 });
 
       const containerWidth =
         canvasRef.current.parentElement?.clientWidth || 800;
       const newScale = (containerWidth - 100) / baseViewport.width;
       setPdfScale(newScale);
+      renderPDFPagesWorking(activeTab.pdfBytes, newScale);
+      addDebugLog(`Fit to width: scale ${newScale.toFixed(2)}`);
     } catch (error) {
       addDebugLog(`Error in fit to width: ${error}`);
     }
   }
 
-  // Page navigation functions
-  function previousPage() {
-    try {
-      addDebugLog(
-        `Attempting to go to previous page. Current: ${activeTab?.pageNum}`
-      );
-
-      if (!activeTab || !activeTab.isPDF) {
-        addDebugLog(`Current tab is not a PDF or doesn't exist`);
-        return;
-      }
-
-      if (!activeTab.pageNum || activeTab.pageNum <= 1) {
-        addDebugLog(`Already on first page or invalid page number`);
-        return;
-      }
-
-      if (!activeTab.pdfBytes || activeTab.pdfBytes.length === 0) {
-        addDebugLog(`PDF bytes are missing or empty`);
-        return;
-      }
-
-      const newPageNum = activeTab.pageNum - 1;
-      addDebugLog(`Navigating to page ${newPageNum}`);
-
-      setTabs((prev) =>
-        prev.map((tab) =>
-          tab.isActive ? { ...tab, pageNum: newPageNum } : tab
-        )
-      );
-
-      renderPDFPage(activeTab.pdfBytes, newPageNum);
-    } catch (error) {
-      addDebugLog(`Error in previousPage: ${error}`);
-      console.error("Previous page error:", error);
-    }
-  }
-
-  function nextPage() {
-    try {
-      addDebugLog(
-        `Attempting to go to next page. Current: ${activeTab?.pageNum}, Total: ${totalPages}`
-      );
-
-      if (!activeTab || !activeTab.isPDF) {
-        addDebugLog(`Current tab is not a PDF or doesn't exist`);
-        return;
-      }
-
-      if (!activeTab.pageNum || activeTab.pageNum >= totalPages) {
-        addDebugLog(`Already on last page or invalid page number`);
-        return;
-      }
-
-      if (!activeTab.pdfBytes || activeTab.pdfBytes.length === 0) {
-        addDebugLog(`PDF bytes are missing or empty`);
-        return;
-      }
-
-      const newPageNum = activeTab.pageNum + 1;
-      addDebugLog(`Navigating to page ${newPageNum}`);
-
-      setTabs((prev) =>
-        prev.map((tab) =>
-          tab.isActive ? { ...tab, pageNum: newPageNum } : tab
-        )
-      );
-
-      renderPDFPage(activeTab.pdfBytes, newPageNum);
-    } catch (error) {
-      addDebugLog(`Error in nextPage: ${error}`);
-      console.error("Next page error:", error);
-    }
-  }
+  // Page navigation functions removed - using scrollable view instead
 
   async function askAI() {
     if (!window.electronAPI || !prompt.trim()) return;
 
     setAiLoading(true);
-    addDebugLog(`Asking AI assistant using ${aiProvider}...`);
+    addDebugLog(`Asking AI assistant using Llama...`);
 
     try {
-      // Get the appropriate API key based on provider
-      let apiKey: string | undefined = undefined;
-      if (aiProvider === "gemini" && geminiApiKey) {
-        apiKey = geminiApiKey;
-      } else if (aiProvider === "openai" && openaiApiKey) {
-        apiKey = openaiApiKey;
-      }
-
-      const result = await window.electronAPI.askAI(prompt, aiProvider, apiKey);
+      // Use Llama for all AI requests (no API key needed)
+      const result = await window.electronAPI.askAI(prompt, "llama");
       if (result.success && result.content) {
         setAiReply(result.content);
         addDebugLog("AI response received");
@@ -1300,8 +2277,12 @@ ${textContent}`;
           window.electronAPI.hideBrowser();
         }
         setIsWebView(false);
-        if (tab.pdfBytes && tab.pageNum) {
-          renderPDFPage(tab.pdfBytes, tab.pageNum);
+        if (tab.pdfBytes) {
+          // Clear cached PDF document when switching to a different PDF
+          if (pdfDocument) {
+            setPdfDocument(null);
+          }
+          renderPDFPagesWorking(tab.pdfBytes);
         }
       } else if (tab.url) {
         // Show browser for URL tabs
@@ -1436,31 +2417,10 @@ ${textContent}`;
             <div className="pdf-container">
               <div className="pdf-toolbar">
                 <div className="pdf-nav-controls">
-                  <button
-                    className="pdf-btn"
-                    onClick={previousPage}
-                    disabled={
-                      !activeTab || !activeTab.pageNum || activeTab.pageNum <= 1
-                    }
-                    title="Previous Page"
-                  >
-                    <ChevronLeftIcon />
-                  </button>
                   <span className="page-info">
-                    Page {activeTab?.pageNum || 1} of {totalPages}
+                    {totalPages} page{totalPages !== 1 ? "s" : ""} - Scroll to
+                    navigate
                   </span>
-                  <button
-                    className="pdf-btn"
-                    onClick={nextPage}
-                    disabled={
-                      !activeTab ||
-                      !activeTab.pageNum ||
-                      activeTab.pageNum >= totalPages
-                    }
-                    title="Next Page"
-                  >
-                    <ChevronRightIcon />
-                  </button>
                 </div>
 
                 <div className="pdf-zoom-controls">
@@ -1502,6 +2462,16 @@ ${textContent}`;
               </div>
 
               <div className="pdf-viewer">
+                {/* PDF Reloading Indicator */}
+                {pdfReloading && (
+                  <div className="pdf-loading-overlay">
+                    <div className="pdf-loading-spinner">
+                      <ReloadIcon className="spinning" />
+                      <span>Reloading PDF...</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="pdf-page-container">
                   <canvas ref={canvasRef} className="pdf-canvas" />
                   <div className="pdf-text-layer" id="pdf-text-layer"></div>
@@ -1521,137 +2491,455 @@ ${textContent}`;
 
                 <div className="settings-sections">
                   <div className="setting-section-tab">
-                    <h3>AI Provider</h3>
+                    <h3>Local AI Assistant</h3>
                     <div className="setting-item">
-                      <label htmlFor="ai-provider-select">
-                        Choose your AI provider
-                      </label>
-                      <div className="provider-dropdown-container">
-                        <select
-                          id="ai-provider-select"
-                          value={aiProvider}
-                          onChange={(e) =>
-                            setAiProvider(
-                              e.target.value as "gemini" | "openai" | "llama"
-                            )
-                          }
-                          className="provider-select"
-                        >
-                          <option value="gemini">
-                            Google Gemini - Cloud-based, fast responses
-                          </option>
-                          <option value="openai">
-                            OpenAI GPT - Advanced language model
-                          </option>
-                          <option value="llama">
-                            Llama 3.2 (Local) - Private, offline processing
-                          </option>
-                        </select>
-                      </div>
+                      <p className="ai-description">
+                        InkFlow uses Llama 3.2 for local, private AI processing.
+                        No internet connection or API keys required - everything
+                        runs on your device.
+                      </p>
 
-                      {/* Conditional configuration based on selected provider */}
                       <div className="provider-config">
-                        {aiProvider === "gemini" && (
-                          <input
-                            type="password"
-                            value={geminiApiKey}
-                            onChange={(e) => setGeminiApiKey(e.target.value)}
-                            placeholder="Enter your Gemini API key"
-                            className="api-key-input-compact"
-                          />
-                        )}
-
-                        {aiProvider === "openai" && (
-                          <input
-                            type="password"
-                            value={openaiApiKey}
-                            onChange={(e) => setOpenaiApiKey(e.target.value)}
-                            placeholder="Enter your OpenAI API key"
-                            className="api-key-input-compact"
-                          />
-                        )}
-
-                        {aiProvider === "llama" && (
-                          <div className="llama-config-compact">
-                            {!llamaModelDownloaded ? (
-                              <div className="model-download-compact">
-                                <p className="download-info-compact">
-                                  Download required for local processing (~4GB)
+                        <div className="llama-config-compact">
+                          <div className="llama-status-info">
+                            <p className="status-message">
+                              {llamaStatus.message}
+                            </p>
+                            {llamaStatus.reason === "ollama_not_installed" && (
+                              <div className="ollama-install-info">
+                                <p>
+                                  Ollama is required for local Llama processing.
+                                  We can install it automatically for you.
                                 </p>
-                                {isDownloadingModel ? (
-                                  <div className="download-progress-compact">
-                                    <div className="progress-bar-compact">
+
+                                {isInstallingOllama ? (
+                                  <div className="install-progress">
+                                    <div className="install-progress-bar">
                                       <div
-                                        className="progress-fill-compact"
+                                        className="install-progress-fill"
                                         style={{
-                                          width: `${modelDownloadProgress}%`,
+                                          width: `${ollamaInstallProgress}%`,
                                         }}
                                       ></div>
                                     </div>
-                                    <span className="progress-text-compact">
-                                      {modelDownloadProgress}%
-                                    </span>
+                                    <div className="install-progress-text">
+                                      <span className="install-step">
+                                        {ollamaInstallStep}
+                                      </span>
+                                      <span className="install-percentage">
+                                        {ollamaInstallProgress}%
+                                      </span>
+                                    </div>
                                   </div>
                                 ) : (
-                                  <button
-                                    className="download-btn-compact"
-                                    onClick={async () => {
-                                      setIsDownloadingModel(true);
-                                      setModelDownloadProgress(0);
-                                      addDebugLog(
-                                        "Starting Llama model download..."
-                                      );
+                                  <div className="install-actions">
+                                    <button
+                                      className="install-ollama-btn"
+                                      onClick={async () => {
+                                        setIsInstallingOllama(true);
+                                        setOllamaInstallProgress(0);
+                                        setOllamaInstallStep(
+                                          "Starting installation..."
+                                        );
+                                        addDebugLog(
+                                          "Starting automatic Ollama installation..."
+                                        );
 
-                                      try {
+                                        try {
+                                          if (
+                                            !window.electronAPI?.installOllama
+                                          ) {
+                                            addDebugLog(
+                                              "Install API not available"
+                                            );
+                                            setIsInstallingOllama(false);
+                                            return;
+                                          }
+
+                                          const result =
+                                            await window.electronAPI.installOllama();
+                                          if (result.success) {
+                                            addDebugLog(
+                                              `Ollama installed successfully: ${result.message}`
+                                            );
+
+                                            // Re-check status after installation
+                                            if (
+                                              window.electronAPI
+                                                ?.checkLlamaModel
+                                            ) {
+                                              const checkResult =
+                                                await window.electronAPI.checkLlamaModel();
+                                              if (checkResult.success) {
+                                                setLlamaModelDownloaded(
+                                                  checkResult.available
+                                                );
+                                                setLlamaStatus({
+                                                  reason:
+                                                    checkResult.reason ||
+                                                    "unknown",
+                                                  message:
+                                                    checkResult.message ||
+                                                    "Unknown status",
+                                                  ollamaInstalled:
+                                                    checkResult.reason !==
+                                                    "ollama_not_installed",
+                                                });
+                                              }
+                                            }
+                                          } else {
+                                            addDebugLog(
+                                              `Installation failed: ${result.error}`
+                                            );
+                                          }
+                                        } catch (error) {
+                                          addDebugLog(
+                                            `Installation error: ${error}`
+                                          );
+                                        } finally {
+                                          setIsInstallingOllama(false);
+                                        }
+                                      }}
+                                    >
+                                      Install Ollama Automatically
+                                    </button>
+
+                                    <button
+                                      className="refresh-btn"
+                                      onClick={async () => {
+                                        // Re-check status
                                         if (
-                                          !window.electronAPI
-                                            ?.downloadLlamaModel
+                                          window.electronAPI?.checkLlamaModel
                                         ) {
-                                          addDebugLog(
-                                            "Download API not available"
-                                          );
-                                          setIsDownloadingModel(false);
-                                          return;
+                                          const result =
+                                            await window.electronAPI.checkLlamaModel();
+                                          if (result.success) {
+                                            setLlamaModelDownloaded(
+                                              result.available
+                                            );
+                                            setLlamaStatus({
+                                              reason:
+                                                result.reason || "unknown",
+                                              message:
+                                                result.message ||
+                                                "Unknown status",
+                                              ollamaInstalled:
+                                                result.reason !==
+                                                "ollama_not_installed",
+                                            });
+                                          }
                                         }
+                                      }}
+                                    >
+                                      Refresh Status
+                                    </button>
 
-                                        const result =
-                                          await window.electronAPI.downloadLlamaModel();
-                                        if (!result.success) {
-                                          setIsDownloadingModel(false);
-                                          addDebugLog(
-                                            `Download failed: ${result.error}`
-                                          );
+                                    <button
+                                      className="permission-btn"
+                                      onClick={async () => {
+                                        // Check macOS permissions
+                                        if (
+                                          window.electronAPI
+                                            ?.requestMacosPermissions
+                                        ) {
+                                          const result =
+                                            await window.electronAPI.requestMacosPermissions();
+                                          if (result.success) {
+                                            addDebugLog("macOS permissions OK");
+                                          } else {
+                                            addDebugLog(
+                                              `Permission issue: ${result.message}`
+                                            );
+                                            if (result.suggestion) {
+                                              addDebugLog(
+                                                `Suggestion: ${result.suggestion}`
+                                              );
+                                            }
+                                          }
                                         }
-                                      } catch (error) {
-                                        setIsDownloadingModel(false);
-                                        addDebugLog(`Download error: ${error}`);
-                                      }
-                                    }}
-                                  >
-                                    Download Model
-                                  </button>
+                                      }}
+                                    >
+                                      Check Permissions
+                                    </button>
+                                  </div>
                                 )}
                               </div>
-                            ) : (
+                            )}
+
+                            {/* Ollama Service Test and Install Section */}
+                            <div className="ollama-service-section">
+                              <h4>Ollama Service</h4>
+
+                              {/* Test Service Button */}
+                              <button
+                                className="test-service-btn"
+                                onClick={async () => {
+                                  addDebugLog("Testing Ollama service...");
+                                  if (!window.electronAPI) {
+                                    addDebugLog("Electron API not available");
+                                    return;
+                                  }
+                                  try {
+                                    const testResult =
+                                      await window.electronAPI.testOllamaConnection();
+                                    if (testResult.success) {
+                                      addDebugLog(
+                                        `✅ Ollama service is running: ${testResult.message}`
+                                      );
+                                      setOllamaServiceTestFailed(false);
+                                      if (
+                                        testResult.models &&
+                                        testResult.models.length > 0
+                                      ) {
+                                        addDebugLog(
+                                          `Available models: ${testResult.models
+                                            .map((m) => m.name)
+                                            .join(", ")}`
+                                        );
+                                      }
+                                    } else {
+                                      addDebugLog(
+                                        `❌ Ollama service test failed: ${testResult.error}`
+                                      );
+                                      setOllamaServiceTestFailed(true);
+                                    }
+                                  } catch (error) {
+                                    addDebugLog(
+                                      `Error testing Ollama service: ${error}`
+                                    );
+                                  }
+                                }}
+                              >
+                                Test Service
+                              </button>
+
+                              {/* Start Service Button */}
+                              <button
+                                className="start-service-btn"
+                                onClick={async () => {
+                                  addDebugLog("Starting Ollama service...");
+                                  if (!window.electronAPI) {
+                                    addDebugLog("Electron API not available");
+                                    return;
+                                  }
+                                  try {
+                                    const result =
+                                      await window.electronAPI.startOllamaService();
+                                    if (result.success) {
+                                      addDebugLog(`✅ ${result.message}`);
+                                      setOllamaServiceTestFailed(false);
+                                    } else {
+                                      addDebugLog(
+                                        `❌ Failed to start service: ${result.error}`
+                                      );
+                                      setOllamaServiceTestFailed(true);
+                                    }
+                                  } catch (error) {
+                                    addDebugLog(
+                                      `Error starting Ollama service: ${error}`
+                                    );
+                                  }
+                                }}
+                              >
+                                Start Service
+                              </button>
+
+                              {/* Install Ollama Button */}
+                              {(!llamaStatus.ollamaInstalled ||
+                                llamaStatus.reason === "ollama_not_installed" ||
+                                ollamaServiceTestFailed) && (
+                                <button
+                                  className="install-ollama-btn"
+                                  onClick={async () => {
+                                    addDebugLog(
+                                      "Starting Ollama installation..."
+                                    );
+                                    if (!window.electronAPI) {
+                                      addDebugLog("Electron API not available");
+                                      return;
+                                    }
+                                    setIsInstallingOllama(true);
+                                    setOllamaInstallProgress(0);
+                                    setOllamaInstallStep(
+                                      "Starting installation..."
+                                    );
+
+                                    try {
+                                      const result =
+                                        await window.electronAPI.installOllama();
+                                      if (result.success) {
+                                        addDebugLog(
+                                          `✅ Ollama installed successfully: ${result.message}`
+                                        );
+                                        setOllamaServiceTestFailed(false);
+                                        // Refresh the Llama status
+                                        const statusResult =
+                                          await window.electronAPI.checkLlamaModel();
+                                        setLlamaStatus({
+                                          reason:
+                                            statusResult.reason || "unknown",
+                                          message:
+                                            statusResult.message ||
+                                            "Status updated",
+                                          ollamaInstalled:
+                                            statusResult.reason ===
+                                              "model_ready" ||
+                                            statusResult.reason ===
+                                              "model_not_downloaded",
+                                        });
+                                      } else {
+                                        addDebugLog(
+                                          `❌ Ollama installation failed: ${result.error}`
+                                        );
+                                      }
+                                    } catch (error) {
+                                      addDebugLog(
+                                        `Error installing Ollama: ${error}`
+                                      );
+                                    } finally {
+                                      setIsInstallingOllama(false);
+                                    }
+                                  }}
+                                  disabled={isInstallingOllama}
+                                >
+                                  {isInstallingOllama
+                                    ? "Installing..."
+                                    : "Install Ollama"}
+                                </button>
+                              )}
+
+                              {/* Installation Progress */}
+                              {isInstallingOllama && (
+                                <div className="install-progress">
+                                  <div className="install-progress-bar">
+                                    <div
+                                      className="install-progress-fill"
+                                      style={{
+                                        width: `${ollamaInstallProgress}%`,
+                                      }}
+                                    ></div>
+                                  </div>
+                                  <div className="install-progress-text">
+                                    <span className="install-step">
+                                      {ollamaInstallStep}
+                                    </span>
+                                    <span className="install-percentage">
+                                      {ollamaInstallProgress}%
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {llamaStatus.ollamaInstalled &&
+                              !llamaModelDownloaded && (
+                                <div className="model-download-compact">
+                                  <p className="download-info-compact">
+                                    Download required for local processing
+                                    (~4GB)
+                                  </p>
+                                  {isDownloadingModel ? (
+                                    <div className="download-progress-compact">
+                                      <div className="progress-bar-compact">
+                                        <div
+                                          className="progress-fill-compact"
+                                          style={{
+                                            width: `${modelDownloadProgress}%`,
+                                          }}
+                                        ></div>
+                                      </div>
+                                      <span className="progress-text-compact">
+                                        {modelDownloadProgress}%
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      className="download-btn-compact"
+                                      onClick={async () => {
+                                        setIsDownloadingModel(true);
+                                        setModelDownloadProgress(0);
+                                        addDebugLog(
+                                          "Starting Llama model download via Ollama..."
+                                        );
+
+                                        try {
+                                          if (
+                                            !window.electronAPI
+                                              ?.downloadLlamaModel
+                                          ) {
+                                            addDebugLog(
+                                              "Download API not available"
+                                            );
+                                            setIsDownloadingModel(false);
+                                            return;
+                                          }
+
+                                          // Ensure Ollama service is running before downloading
+                                          if (
+                                            window.electronAPI
+                                              ?.startOllamaService
+                                          ) {
+                                            addDebugLog(
+                                              "Starting Ollama service..."
+                                            );
+                                            const serviceResult =
+                                              await window.electronAPI.startOllamaService();
+                                            if (serviceResult.success) {
+                                              addDebugLog(
+                                                "Ollama service started successfully"
+                                              );
+                                            } else {
+                                              addDebugLog(
+                                                `Service start warning: ${serviceResult.message}`
+                                              );
+                                            }
+                                          }
+
+                                          const result =
+                                            await window.electronAPI.downloadLlamaModel();
+                                          if (!result.success) {
+                                            setIsDownloadingModel(false);
+                                            addDebugLog(
+                                              `Download failed: ${result.error}`
+                                            );
+                                          }
+                                        } catch (error) {
+                                          setIsDownloadingModel(false);
+                                          addDebugLog(
+                                            `Download error: ${error}`
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      Download Model
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                            {llamaModelDownloaded && (
                               <div className="model-status-compact">
                                 <span className="status-text">
                                   ✓ Model ready for local processing
                                 </span>
                                 <button
                                   className="redownload-btn"
-                                  onClick={() => setLlamaModelDownloaded(false)}
+                                  onClick={() => {
+                                    setLlamaModelDownloaded(false);
+                                    setLlamaStatus({
+                                      reason: "model_not_downloaded",
+                                      message: "Model needs to be downloaded",
+                                      ollamaInstalled: true,
+                                    });
+                                  }}
                                 >
                                   Re-download
                                 </button>
                               </div>
                             )}
                           </div>
-                        )}
+                        </div>
                       </div>
-                      <span className="setting-description">
-                        Cloud providers require API keys, local models need to
-                        be downloaded
-                      </span>
                     </div>
                   </div>
 
@@ -1690,11 +2978,7 @@ ${textContent}`;
                         </div>
                         <div className="info-item">
                           <span className="info-label">AI Provider</span>
-                          <span className="info-value">
-                            {aiProvider === "gemini" && "Google Gemini"}
-                            {aiProvider === "openai" && "OpenAI GPT"}
-                            {aiProvider === "llama" && "Llama 3.2 (Local)"}
-                          </span>
+                          <span className="info-value">Llama 3.2 (Local)</span>
                         </div>
                       </div>
                     </div>
@@ -1766,7 +3050,9 @@ ${textContent}`;
                         <span></span>
                         <span></span>
                       </div>
-                      <span className="typing-text">Analyzing PDF...</span>
+                      <span className="typing-text modern-shine">
+                        Analyzing document...
+                      </span>
                     </div>
                   </div>
                 </div>
