@@ -1,4 +1,10 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+} from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -150,10 +156,19 @@ function App() {
   const [enableFormFilling, setEnableFormFilling] = useState<boolean>(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
 
+  // Font customization state
+  const [selectedFont, setSelectedFont] = useState<string>("Helvetica");
+  const [selectedFontSize, setSelectedFontSize] = useState<number>(14);
+
   // Debug state
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [debugExpanded, setDebugExpanded] = useState(false);
   const [debugLog, setDebugLog] = useState<string[]>([]);
+
+  const addDebugLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugLog((prev) => [...prev.slice(-9), `${timestamp}: ${message}`]);
+  }, []);
 
   // Enable debug mode with Ctrl+D
   useEffect(() => {
@@ -164,19 +179,13 @@ function App() {
         addDebugLog(`Debug mode ${!debugEnabled ? "enabled" : "disabled"}`);
       }
     };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [debugEnabled]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [debugEnabled, addDebugLog]);
 
   // Sidebar resize state
   const [sidebarWidth, setSidebarWidth] = useState(320); // Default width
   const [isResizing, setIsResizing] = useState(false);
-
-  const addDebugLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setDebugLog((prev) => [...prev.slice(-9), `${timestamp}: ${message}`]);
-  };
 
   // Form handling functions
   const handleFormDataChange = (newFormData: Record<string, any>) => {
@@ -460,7 +469,7 @@ function App() {
         window.electronAPI.removeAllListeners("ollama-install-progress");
       }
     };
-  }, []);
+  }, [addDebugLog]);
 
   // Auto-start Ollama service when Llama provider is selected
   useEffect(() => {
@@ -484,9 +493,14 @@ function App() {
     };
 
     autoStartOllama();
-  }, [aiProvider, llamaStatus.ollamaInstalled, isInstallingOllama]);
+  }, [
+    aiProvider,
+    llamaStatus.ollamaInstalled,
+    isInstallingOllama,
+    addDebugLog,
+  ]);
 
-  // Configure PDF.js worker
+  // Setup PDF.js worker on mount
   useEffect(() => {
     try {
       // Try to use unpkg CDN first (most reliable for newer versions)
@@ -497,11 +511,10 @@ function App() {
       const workerBlob = new Blob(
         [
           `
-        // Minimal worker that handles basic PDF.js worker messages
-        self.onmessage = function(e) {
-          // Fallback to main thread processing
-          self.postMessage({action: 'fallback', data: e.data});
-        };
+        self.addEventListener('message', function(e) {
+          // Just acknowledge the message
+          self.postMessage(e.data);
+        });
       `,
         ],
         { type: "application/javascript" }
@@ -509,7 +522,7 @@ function App() {
       pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);
       addDebugLog("PDF.js worker configured with fallback blob");
     }
-  }, []);
+  }, [addDebugLog]);
 
   // Debug activeTab changes (only log when PDF-related properties change)
   useEffect(() => {
@@ -520,7 +533,7 @@ function App() {
         }, hasPdfBytes=${!!activeTab?.pdfBytes}, pageNum=${activeTab?.pageNum}`
       );
     }
-  }, [activeTab]);
+  }, [activeTab, addDebugLog]);
 
   // Re-render PDF when scale changes or debug mode toggles
   useEffect(() => {
@@ -562,15 +575,15 @@ function App() {
     });
 
     return () => {
-      if (window.electronAPI?.removeAllListeners) {
+      if (window.electronAPI) {
         window.electronAPI.removeAllListeners("browser-loading");
         window.electronAPI.removeAllListeners("browser-url-changed");
         window.electronAPI.removeAllListeners("browser-error");
       }
     };
-  }, []);
+  }, [addDebugLog]);
 
-  // Handle window resize
+  // Handle window resize for dynamic sidebar constraints
   useEffect(() => {
     const handleResize = () => {
       if (window.electronAPI && isWebView) {
@@ -777,84 +790,117 @@ function App() {
   }
 
   // Handle save from unified PDF editor
-  async function handleUnifiedPDFSave(fields: any[], _pdfBytes: Uint8Array) {
-    try {
-      const currentTabPdfData = tabPdfData[activeTab.id];
-      console.log("handleUnifiedPDFSave called with:", {
-        fieldsCount: fields?.length,
-        currentTabId: activeTab.id,
-        currentTabPdfDataLength: currentTabPdfData?.length,
-        fieldsData: fields?.map((f) => ({
-          name: f.name,
-          type: f.type,
-          value: f.value,
-        })),
-      });
+  const handleUnifiedPDFSave = useCallback(
+    async (fields: any[], _pdfBytes: Uint8Array) => {
+      try {
+        const currentTabPdfData = tabPdfData[activeTab.id];
+        console.log("handleUnifiedPDFSave called with:", {
+          fieldsCount: fields?.length,
+          currentTabId: activeTab.id,
+          currentTabPdfDataLength: currentTabPdfData?.length,
+          fieldsData: fields?.map((f) => ({
+            name: f.name,
+            type: f.type,
+            value: f.value,
+          })),
+        });
 
-      if (!window.electronAPI?.pdfFinalizerFinalize) {
-        addDebugLog("PDF finalizer API not available");
-        alert("PDF save functionality not available");
-        return;
-      }
+        if (!window.electronAPI?.pdfFinalizerFinalize) {
+          addDebugLog("PDF finalizer API not available");
+          alert("PDF save functionality not available");
+          return;
+        }
 
-      if (!currentTabPdfData || currentTabPdfData.length === 0) {
-        addDebugLog(
-          `No PDF data available for saving. currentTabPdfData: ${currentTabPdfData}, length: ${currentTabPdfData?.length}`
-        );
-        alert("No PDF data available for saving");
-        return;
-      }
+        if (!currentTabPdfData || currentTabPdfData.length === 0) {
+          addDebugLog(
+            `No PDF data available for saving. currentTabPdfData: ${currentTabPdfData}, length: ${currentTabPdfData?.length}`
+          );
+          alert("No PDF data available for saving");
+          return;
+        }
 
-      addDebugLog(`Saving PDF with ${fields.length} form fields`);
+        addDebugLog(`Saving PDF with ${fields.length} form fields`);
 
-      // Convert fields to the format expected by PDF finalizer
-      const formFields = fields.map((field) => ({
-        name: field.name,
-        type: field.type,
-        pageNumber: field.pageNumber,
-        x: field.x,
-        y: field.y,
-        width: field.width,
-        height: field.height,
-        value: field.value,
-      }));
+        // Convert fields to the format expected by PDF finalizer
+        const formFields = fields.map((field) => ({
+          name: field.name,
+          type: field.type,
+          pageNumber: field.pageNumber,
+          x: field.x,
+          y: field.y,
+          width: field.width,
+          height: field.height,
+          value: field.value,
+          isAcroForm: true, // These are AcroForm fields from pdf.js
+        }));
 
-      // Use the current tab's PDF bytes array directly (no ArrayBuffer issues)
-      const buffer = currentTabPdfData;
+        // Use the current tab's PDF bytes array directly (no ArrayBuffer issues)
+        const buffer = currentTabPdfData;
 
-      // Call PDF finalizer
-      const result = await window.electronAPI.pdfFinalizerFinalize(
-        buffer,
-        formFields,
-        { fontSize: 14 }
-      );
-
-      if (result.success && result.data) {
-        // Save the filled PDF
-        const filledPdfBytes = new Uint8Array(result.data);
-        await window.electronAPI.saveFileDialog(
-          filledPdfBytes,
-          `${activeTab.fileName?.replace(".pdf", "") || "document"}_filled.pdf`
+        // Call PDF finalizer with user-selected font settings
+        const result = await window.electronAPI.pdfFinalizerFinalize(
+          buffer,
+          formFields,
+          {
+            fontSize: selectedFontSize,
+            fontFamily: selectedFont,
+          }
         );
 
-        // Use setTimeout to prevent state updates from interfering with PDF rendering
+        if (result.success && result.data) {
+          // Save the filled PDF
+          const filledPdfBytes = new Uint8Array(result.data);
+          console.log("About to save PDF with data:", {
+            originalDataLength: Array.isArray(result.data)
+              ? result.data.length
+              : result.data.byteLength || "unknown",
+            filledPdfBytesLength: filledPdfBytes.length,
+            fileName: activeTab.fileName,
+          });
+
+          // Convert to a plain array before sending over IPC
+          const saveResult = await window.electronAPI.saveFileDialog(
+            Array.from(filledPdfBytes),
+            `${
+              activeTab.fileName?.replace(".pdf", "") || "document"
+            }_filled.pdf`
+          );
+
+          console.log("Save result:", saveResult);
+
+          // Use setTimeout to prevent state updates from interfering with PDF rendering
+          setTimeout(() => {
+            if (saveResult.success) {
+              addDebugLog(`PDF saved successfully to: ${saveResult.filePath}`);
+              alert(`PDF saved successfully to: ${saveResult.filePath}`);
+            } else {
+              addDebugLog(
+                `PDF save failed: ${
+                  saveResult.error || saveResult.message || "Unknown error"
+                }`
+              );
+              alert(
+                `Failed to save PDF: ${
+                  saveResult.error || saveResult.message || "Unknown error"
+                }`
+              );
+            }
+          }, 0);
+        } else {
+          setTimeout(() => {
+            addDebugLog(`PDF save failed: ${result.error}`);
+            alert(`Failed to save PDF: ${result.error || "Unknown error"}`);
+          }, 0);
+        }
+      } catch (error) {
         setTimeout(() => {
-          addDebugLog("PDF saved successfully");
-          alert("PDF saved successfully!");
-        }, 0);
-      } else {
-        setTimeout(() => {
-          addDebugLog(`PDF save failed: ${result.error}`);
-          alert(`Failed to save PDF: ${result.error || "Unknown error"}`);
+          addDebugLog(`PDF save error: ${error}`);
+          alert(`Error saving PDF: ${error}`);
         }, 0);
       }
-    } catch (error) {
-      setTimeout(() => {
-        addDebugLog(`PDF save error: ${error}`);
-        alert(`Error saving PDF: ${error}`);
-      }, 0);
-    }
-  }
+    },
+    [activeTab, tabPdfData, addDebugLog, selectedFont, selectedFontSize]
+  );
 
   async function renderPDFPagesWorkingOld(
     pdfBytes: Uint8Array,
@@ -2592,6 +2638,10 @@ ${textContent}`;
               pdfBytes={currentTabPdfBytes}
               editMode={enableFormFilling}
               onSave={handleUnifiedPDFSave}
+              selectedFont={selectedFont}
+              selectedFontSize={selectedFontSize}
+              onFontChange={setSelectedFont}
+              onFontSizeChange={setSelectedFontSize}
             />
           )}
 

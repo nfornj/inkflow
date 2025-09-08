@@ -49,14 +49,75 @@ class PDFFinalizer {
       const pdfDoc = await PDFDocument.load(originalPdfBuffer);
       const pages = pdfDoc.getPages();
       
-      // Load default font
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      // Load font based on user selection
+      const fontFamily = options?.fontFamily || 'Helvetica';
+      console.log('PDFFinalizer: Loading font:', fontFamily);
+      
+      // Map font names to StandardFonts
+      const fontMap = {
+        'Helvetica': StandardFonts.Helvetica,
+        'Times-Roman': StandardFonts.TimesRoman,
+        'Courier': StandardFonts.Courier,
+        'Helvetica-Bold': StandardFonts.HelveticaBold,
+        'Times-Bold': StandardFonts.TimesBold,
+        'Courier-Bold': StandardFonts.CourierBold
+      };
+      
+      const selectedStandardFont = fontMap[fontFamily] || StandardFonts.Helvetica;
+      const font = await pdfDoc.embedFont(selectedStandardFont);
+      console.log('PDFFinalizer: Font loaded successfully:', {
+        requestedFont: fontFamily,
+        fontName: font.name,
+        fontType: typeof font,
+        hasWidthMethod: typeof font.widthOfTextAtSize === 'function'
+      });
+
+      // CRITICAL: Properly flatten form fields to static visual elements
+      // This converts interactive fields to static appearance while preserving visual structure
+      console.log('PDFFinalizer: Flattening form fields to static visual elements');
+      const form = pdfDoc.getForm();
+      if (form) {
+        try {
+          const fields = form.getFields();
+          console.log(`PDFFinalizer: Found ${fields.length} form fields to flatten`);
+          
+          // Step 1: Flatten the entire form to convert interactive fields to static appearance
+          console.log('PDFFinalizer: Flattening form to remove interactivity while preserving appearance');
+          form.flatten();
+          console.log('PDFFinalizer: Form flattened successfully - fields are now static visual elements');
+          
+        } catch (formError) {
+          console.warn('PDFFinalizer: Could not flatten form fields:', formError.message);
+          
+          // Fallback: Try to remove fields individually if form.flatten() fails
+          try {
+            const fields = form.getFields();
+            console.log(`PDFFinalizer: Fallback - removing ${fields.length} fields individually`);
+            fields.forEach((field, index) => {
+              try {
+                const fieldName = field.getName();
+                console.log(`PDFFinalizer: Removing field ${index + 1}: ${fieldName}`);
+                form.removeField(field);
+              } catch (fieldError) {
+                console.warn(`PDFFinalizer: Could not remove field ${field.getName()}:`, fieldError.message);
+              }
+            });
+            console.log('PDFFinalizer: Individual field removal completed');
+          } catch (fallbackError) {
+            console.warn('PDFFinalizer: Fallback field removal also failed:', fallbackError.message);
+          }
+        }
+      } else {
+        console.log('PDFFinalizer: No form found in PDF');
+      }
       
       // Group form data by page
       const formDataByPage = this.groupFormDataByPage(formData);
       
       // Process each page
+      console.log(`PDFFinalizer: Processing ${formDataByPage.size} pages with form data`);
       for (const [pageNumber, pageFormData] of formDataByPage.entries()) {
+        console.log(`PDFFinalizer: Processing page ${pageNumber} with ${pageFormData.length} fields`);
         if (pageNumber < pages.length) {
           const page = pages[pageNumber];
           await this.drawFormDataOnPage(page, pageFormData, font, {
@@ -65,11 +126,16 @@ class PDFFinalizer {
             backgroundColor,
             padding
           });
+        } else {
+          console.log(`PDFFinalizer: Skipping page ${pageNumber} - exceeds PDF page count (${pages.length})`);
         }
       }
 
       // Save the finalized PDF
+      console.log('PDFFinalizer: Serializing PDF document...');
       const finalizedPdfBytes = await pdfDoc.save();
+      console.log(`PDFFinalizer: PDF serialized successfully, size: ${finalizedPdfBytes.length} bytes`);
+      console.log(`PDFFinalizer: Original PDF size: ${originalPdfBuffer.length} bytes, Final PDF size: ${finalizedPdfBytes.length} bytes`);
       console.log('PDFFinalizer: PDF finalization completed successfully');
       
       return finalizedPdfBytes;
@@ -88,14 +154,18 @@ class PDFFinalizer {
   groupFormDataByPage(formData) {
     const grouped = new Map();
     
+    console.log(`PDFFinalizer: Grouping ${formData.length} fields by page`);
     formData.forEach(field => {
-      const pageNum = field.pageNumber || field.page || 1;
+      // Keep 0-based indexing to match PDF pages array
+      const pageNum = field.pageNumber !== undefined ? field.pageNumber : (field.page !== undefined ? field.page : 0);
+      console.log(`PDFFinalizer: Field "${field.name}" assigned to page ${pageNum} (original pageNumber: ${field.pageNumber}, page: ${field.page})`);
       if (!grouped.has(pageNum)) {
         grouped.set(pageNum, []);
       }
       grouped.get(pageNum).push(field);
     });
     
+    console.log(`PDFFinalizer: Grouped into ${grouped.size} pages:`, Array.from(grouped.entries()).map(([page, fields]) => ({ page, fieldCount: fields.length })));
     return grouped;
   }
 
@@ -171,16 +241,17 @@ class PDFFinalizer {
     let width = field.width || 200;
     let height = field.height || 25;
 
+    console.log(`PDFFinalizer: Input coordinates for ${field.name}: (${x}, ${y}), isAcroForm: ${field.isAcroForm}`);
+
     // Check if this is an AcroForm field (already in PDF coordinates)
     if (field.isAcroForm) {
       // AcroForm coordinates are already in PDF coordinate system (bottom-left origin)
+      // No conversion needed
       console.log(`PDFFinalizer: Using AcroForm coordinates for ${field.name}: (${x}, ${y})`);
     } else {
       // OCR coordinates are typically top-left origin, convert to bottom-left
-      if (y > pageSize.height / 2) {
-        y = pageSize.height - y - height;
-        console.log(`PDFFinalizer: Converted OCR coordinates for ${field.name}: (${x}, ${y})`);
-      }
+      y = pageSize.height - y - height;
+      console.log(`PDFFinalizer: Converted OCR coordinates for ${field.name}: (${x}, ${y})`);
     }
 
     // Ensure coordinates are within page bounds
@@ -203,10 +274,26 @@ class PDFFinalizer {
   drawTextField(page, field, coords, font, fontSize, fontColor) {
     const value = field.value || '';
     console.log(`PDFFinalizer: Drawing text field "${field.name}" with value "${value}" at (${coords.x}, ${coords.y})`);
-    if (!value) {
+    
+    // Only skip if value is null, undefined, or explicitly empty string
+    if (value === null || value === undefined) {
       console.log(`PDFFinalizer: Skipping field "${field.name}" - no value provided`);
       return;
     }
+    
+    // Allow empty strings to be drawn (they might be intentionally blank)
+    if (value === '') {
+      console.log(`PDFFinalizer: Drawing empty field "${field.name}" - will draw placeholder or skip`);
+      return; // For now, skip empty strings, but we could draw a placeholder
+    }
+    
+    // Debug: Log font and color details
+    console.log(`PDFFinalizer: Font details:`, {
+      fontName: font.name,
+      fontSize: fontSize,
+      fontColor: `rgb(${fontColor.red}, ${fontColor.green}, ${fontColor.blue})`,
+      fieldDimensions: `${coords.width}x${coords.height}`
+    });
 
     // Draw text with word wrapping
     const textWidth = font.widthOfTextAtSize(value, fontSize);
@@ -214,13 +301,28 @@ class PDFFinalizer {
     
     if (textWidth <= maxWidth) {
       // Single line
-      page.drawText(value, {
-        x: coords.x + this.fieldPadding,
-        y: coords.y + (coords.height - fontSize) / 2,
-        size: fontSize,
-        font: font,
-        color: fontColor,
-      });
+      const drawX = coords.x + this.fieldPadding;
+      const drawY = coords.y + (coords.height - fontSize) / 2;
+      
+      // Use appropriate font size that fits well within form fields
+      const testFontSize = Math.max(fontSize, 12); // Use 12pt font (fits better in form fields)
+      const testColor = rgb(0, 0, 0); // Pure black text
+      
+      console.log(`PDFFinalizer: Drawing single-line text "${value}" at (${drawX}, ${drawY}) with font size ${testFontSize}`);
+      console.log(`PDFFinalizer: Text color: rgb(${testColor.red}, ${testColor.green}, ${testColor.blue})`);
+      
+      try {
+        page.drawText(value, {
+          x: drawX,
+          y: drawY,
+          size: testFontSize,
+          font: font,
+          color: testColor,
+        });
+        console.log(`PDFFinalizer: Successfully drew single-line text "${value}" for field "${field.name}"`);
+      } catch (error) {
+        console.error(`PDFFinalizer: Error drawing single-line text for field "${field.name}":`, error);
+      }
     } else {
       // Multi-line text (simplified)
       const words = value.split(' ');
@@ -235,13 +337,19 @@ class PDFFinalizer {
           currentLine = testLine;
         } else {
           if (currentLine) {
-            page.drawText(currentLine, {
-              x: coords.x + this.fieldPadding,
-              y: lineY,
-              size: fontSize,
-              font: font,
-              color: fontColor,
-            });
+            console.log(`PDFFinalizer: Drawing multi-line text "${currentLine}" at (${coords.x + this.fieldPadding}, ${lineY})`);
+            try {
+              page.drawText(currentLine, {
+                x: coords.x + this.fieldPadding,
+                y: lineY,
+                size: fontSize,
+                font: font,
+                color: fontColor,
+              });
+              console.log(`PDFFinalizer: Successfully drew multi-line text "${currentLine}"`);
+            } catch (error) {
+              console.error(`PDFFinalizer: Error drawing multi-line text "${currentLine}":`, error);
+            }
             lineY -= fontSize + 2;
             currentLine = word;
           }
@@ -249,13 +357,19 @@ class PDFFinalizer {
       }
       
       if (currentLine) {
-        page.drawText(currentLine, {
-          x: coords.x + this.fieldPadding,
-          y: lineY,
-          size: fontSize,
-          font: font,
-          color: fontColor,
-        });
+        console.log(`PDFFinalizer: Drawing final multi-line text "${currentLine}" at (${coords.x + this.fieldPadding}, ${lineY})`);
+        try {
+          page.drawText(currentLine, {
+            x: coords.x + this.fieldPadding,
+            y: lineY,
+            size: fontSize,
+            font: font,
+            color: fontColor,
+          });
+          console.log(`PDFFinalizer: Successfully drew final multi-line text "${currentLine}"`);
+        } catch (error) {
+          console.error(`PDFFinalizer: Error drawing final multi-line text "${currentLine}":`, error);
+        }
       }
     }
   }

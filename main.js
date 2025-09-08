@@ -315,20 +315,39 @@ ipcMain.handle('open-file-dialog', async () => {
 });
 
 ipcMain.handle('save-file-dialog', async (event, data, defaultName) => {
-  const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: defaultName,
-    filters: [
-      { name: 'PDF Files', extensions: ['pdf'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  });
-  
-  if (!result.canceled) {
-    await fs.writeFile(result.filePath, Buffer.from(data));
-    return { success: true, filePath: result.filePath };
+  try {
+    console.log('save-file-dialog called with:', {
+      dataType: typeof data,
+      dataLength: data?.length,
+      isArray: Array.isArray(data),
+      defaultName
+    });
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName,
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    
+    console.log('Dialog result:', { canceled: result.canceled, filePath: result.filePath });
+    
+    if (!result.canceled) {
+      const buffer = Buffer.from(data);
+      console.log('Buffer created:', { bufferLength: buffer.length });
+      
+      await fs.writeFile(result.filePath, buffer);
+      console.log('File written successfully to:', result.filePath);
+      
+      return { success: true, filePath: result.filePath };
+    }
+    
+    return { success: false, message: 'User canceled save dialog' };
+  } catch (error) {
+    console.error('Error in save-file-dialog:', error);
+    return { success: false, error: error.message };
   }
-  
-  return { success: false };
 });
 
 // AI API call - Llama only

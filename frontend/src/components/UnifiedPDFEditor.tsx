@@ -47,12 +47,20 @@ interface UnifiedPDFEditorProps {
   pdfBytes: Uint8Array | null;
   editMode: boolean;
   onSave?: (fields: SaveFieldPayload[], pdfBytes: Uint8Array) => void;
+  selectedFont?: string;
+  selectedFontSize?: number;
+  onFontChange?: (font: string) => void;
+  onFontSizeChange?: (size: number) => void;
 }
 
 const UnifiedPDFEditor: React.FC<UnifiedPDFEditorProps> = ({
   pdfBytes,
   editMode,
   onSave,
+  selectedFont = "Helvetica",
+  selectedFontSize = 14,
+  onFontChange,
+  onFontSizeChange,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -239,6 +247,75 @@ const UnifiedPDFEditor: React.FC<UnifiedPDFEditorProps> = ({
       // Wait for render to complete
       await newRenderTask.promise;
 
+      // Render text layer for proper text display (like Chrome)
+      try {
+        const textContent = await page.getTextContent();
+
+        // Create text layer container if it doesn't exist
+        let textLayerDiv = canvasRef.current?.parentElement?.querySelector(
+          ".textLayer"
+        ) as HTMLElement;
+        if (!textLayerDiv) {
+          textLayerDiv = document.createElement("div");
+          textLayerDiv.className = "textLayer";
+          textLayerDiv.style.position = "absolute";
+          textLayerDiv.style.left = "0";
+          textLayerDiv.style.top = "0";
+          textLayerDiv.style.right = "0";
+          textLayerDiv.style.bottom = "0";
+          textLayerDiv.style.overflow = "hidden";
+          textLayerDiv.style.opacity = "1";
+          textLayerDiv.style.lineHeight = "1.0";
+          textLayerDiv.style.pointerEvents = editMode ? "none" : "auto"; // Allow text selection in view mode
+          canvasRef.current?.parentElement?.appendChild(textLayerDiv);
+        } else {
+          // Clear existing text layer
+          textLayerDiv.innerHTML = "";
+        }
+
+        // Render text layer manually (compatible with all pdf.js versions)
+        const textItems = textContent.items;
+
+        for (let i = 0; i < textItems.length; i++) {
+          const item = textItems[i] as any;
+
+          // Create text span element
+          const textSpan = document.createElement("span");
+          textSpan.textContent = item.str;
+
+          // Calculate position and size
+          const tx = viewport.transform;
+          const x =
+            tx[0] * item.transform[4] + tx[2] * item.transform[5] + tx[4];
+          const y =
+            tx[1] * item.transform[4] + tx[3] * item.transform[5] + tx[5];
+
+          // Apply positioning and styling
+          textSpan.style.position = "absolute";
+          textSpan.style.left = `${x}px`;
+          textSpan.style.top = `${y}px`;
+          textSpan.style.fontSize = `${Math.abs(
+            item.transform[0] * viewport.scale
+          )}px`;
+          textSpan.style.fontFamily = item.fontName || "sans-serif";
+          textSpan.style.color = "#000000";
+          textSpan.style.whiteSpace = "pre";
+          textSpan.style.transformOrigin = "0% 0%";
+
+          // Handle text rotation if needed
+          if (item.transform[1] !== 0 || item.transform[2] !== 0) {
+            const angle = Math.atan2(item.transform[1], item.transform[0]);
+            textSpan.style.transform = `rotate(${angle}rad)`;
+          }
+
+          textLayerDiv.appendChild(textSpan);
+        }
+        console.log("Text layer rendered successfully");
+      } catch (textError) {
+        console.warn("Failed to render text layer:", textError);
+        // Continue without text layer if it fails
+      }
+
       // Clear render task when done
       renderTaskRef.current = null;
     } catch (err: any) {
@@ -344,7 +421,7 @@ const UnifiedPDFEditor: React.FC<UnifiedPDFEditorProps> = ({
   };
 
   // Handle save
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!onSave || !pdfBytes) return;
 
     console.log(
@@ -378,7 +455,7 @@ const UnifiedPDFEditor: React.FC<UnifiedPDFEditorProps> = ({
 
     // Call onSave without triggering any state changes
     onSave(fieldsWithData, pdfBytes);
-  };
+  }, [onSave, pdfBytes, formFields, formData]);
 
   // Get fields for current page
   const currentPageFields = formFields.filter(
@@ -445,6 +522,39 @@ const UnifiedPDFEditor: React.FC<UnifiedPDFEditorProps> = ({
               Signature
             </button>
           </div>
+
+          {/* Font Controls */}
+          <div className="toolbar-group font-controls">
+            <label className="font-label">Font:</label>
+            <select
+              className="font-selector"
+              value={selectedFont}
+              onChange={(e) => onFontChange?.(e.target.value)}
+              title="Select Font Family"
+            >
+              <option value="Helvetica">Helvetica</option>
+              <option value="Times-Roman">Times Roman</option>
+              <option value="Courier">Courier</option>
+              <option value="Helvetica-Bold">Helvetica Bold</option>
+              <option value="Times-Bold">Times Bold</option>
+              <option value="Courier-Bold">Courier Bold</option>
+            </select>
+
+            <label className="font-label">Size:</label>
+            <input
+              type="number"
+              className="font-size-input"
+              value={selectedFontSize}
+              onChange={(e) =>
+                onFontSizeChange?.(parseInt(e.target.value) || 14)
+              }
+              min="8"
+              max="72"
+              title="Font Size (8-72pt)"
+            />
+            <span className="font-unit">pt</span>
+          </div>
+
           <div className="toolbar-group">
             <button className="toolbar-btn save-btn" onClick={handleSave}>
               Save PDF
@@ -600,4 +710,4 @@ const UnifiedPDFEditor: React.FC<UnifiedPDFEditorProps> = ({
   );
 };
 
-export default UnifiedPDFEditor;
+export default React.memo(UnifiedPDFEditor);

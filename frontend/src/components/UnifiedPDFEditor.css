@@ -68,6 +68,65 @@
   border-color: #059669;
 }
 
+/* Font Controls */
+.font-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-left: 1px solid #e1e5e9;
+  border-right: 1px solid #e1e5e9;
+}
+
+.font-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin: 0;
+}
+
+.font-selector {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 120px;
+  transition: border-color 0.2s ease;
+}
+
+.font-selector:hover,
+.font-selector:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+.font-size-input {
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  width: 50px;
+  text-align: center;
+  transition: border-color 0.2s ease;
+}
+
+.font-size-input:hover,
+.font-size-input:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+.font-unit {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
 /* Page Navigation */
 .page-navigation {
   display: flex;
@@ -331,4 +390,69 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* Text Layer Styles - Match Chrome PDF Viewer */
+.textLayer {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  overflow: hidden !important;
+  opacity: 1 !important;
+  line-height: 1.0 !important;
+  text-align: initial !important;
+  transform-origin: 0% 0% !important;
+}
+
+.textLayer span,
+.textLayer br {
+  color: #000000 !important;
+  position: absolute !important;
+  white-space: pre !important;
+  cursor: text !important;
+  transform-origin: 0% 0% !important;
+  font-family: sans-serif !important;
+}
+
+.textLayer .highlight {
+  margin: -1px !important;
+  padding: 1px !important;
+  background-color: rgba(180, 0, 170, 0.2) !important;
+  border-radius: 4px !important;
+}
+
+.textLayer .highlight.begin {
+  border-radius: 4px 0px 0px 4px !important;
+}
+
+.textLayer .highlight.end {
+  border-radius: 0px 4px 4px 0px !important;
+}
+
+.textLayer .highlight.middle {
+  border-radius: 0px !important;
+}
+
+.textLayer .highlight.selected {
+  background-color: rgba(0, 100, 0, 0.2) !important;
+}
+
+/* Ensure text layer is above canvas but below form overlays */
+.pdf-container {
+  position: relative !important;
+}
+
+.pdf-container canvas {
+  position: absolute !important;
+  z-index: 1 !important;
+}
+
+.pdf-container .textLayer {
+  z-index: 2 !important;
+}
+
+.pdf-container .form-overlay {
+  z-index: 3 !important;
 }

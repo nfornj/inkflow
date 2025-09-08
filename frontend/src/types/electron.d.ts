@@ -12,7 +12,7 @@ export interface ElectronAPI {
 
   // File operations
   openFileDialog: () => Promise<{ success: boolean; filePath?: string; fileName?: string; data?: ArrayBuffer; error?: string }>;
-  saveFileDialog: (data: any, defaultName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  saveFileDialog: (data: any, defaultName: string) => Promise<{ success: boolean; filePath?: string; error?: string; message?: string }>;
 
   // AI integration
   askAI: (prompt: string, provider?: 'llama') => Promise<{ success: boolean; content?: string; error?: string }>;
