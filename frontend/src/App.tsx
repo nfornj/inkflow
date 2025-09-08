@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import ScrollablePDFViewer from "./components/ScrollablePDFViewer";
+import UnifiedPDFEditor from "./components/UnifiedPDFEditor";
+import "./components/UnifiedPDFEditor.css";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -19,6 +20,8 @@ import {
   CropIcon,
   ResetIcon,
   CopyIcon,
+  MoonIcon,
+  SunIcon,
   UpdateIcon,
   PaperPlaneIcon,
   GearIcon,
@@ -43,7 +46,19 @@ function App() {
   const [tabs, setTabs] = useState<Tab[]>([
     { id: "1", title: "New Tab", isPDF: false, isActive: true },
   ]);
+  // Store PDF bytes per tab to prevent mixing between tabs
+  const [tabPdfData, setTabPdfData] = useState<Record<string, number[]>>({});
   const activeTab = tabs.find((t) => t.isActive)!;
+
+  // Memoize PDF bytes for current tab to prevent unnecessary re-creation
+  const currentTabPdfBytes = useMemo(() => {
+    if (!activeTab?.id || !tabPdfData[activeTab.id]) return null;
+    console.log(`App: Creating memoized PDF bytes for tab ${activeTab.id}`);
+
+    // Create a completely independent copy to prevent ArrayBuffer detachment
+    const sourceArray = tabPdfData[activeTab.id];
+    return Uint8Array.from(sourceArray);
+  }, [activeTab?.id, tabPdfData]);
 
   // UI State
   const [omniboxValue, setOmniboxValue] = useState("");
@@ -123,6 +138,7 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdfScale, setPdfScale] = useState(1.0);
   const [totalPages, setTotalPages] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [showTextLayerDebug, setShowTextLayerDebug] = useState(false);
   const [pdfSummary, setPdfSummary] = useState<string>("");
   const [pdfDocument, setPdfDocument] = useState<any>(null);
@@ -130,6 +146,9 @@ function App() {
   const [detectedContentType, setDetectedContentType] = useState<string>("");
   const [pdfReloading, setPdfReloading] = useState(false);
   const [useNewPDFViewer, setUseNewPDFViewer] = useState<boolean>(true);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [enableFormFilling, setEnableFormFilling] = useState<boolean>(false);
+  const [formData, setFormData] = useState<Record<string, any>>({});
 
   // Debug state
   const [debugEnabled, setDebugEnabled] = useState(false);
@@ -157,6 +176,86 @@ function App() {
   const addDebugLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setDebugLog((prev) => [...prev.slice(-9), `${timestamp}: ${message}`]);
+  };
+
+  // Form handling functions
+  const handleFormDataChange = (newFormData: Record<string, any>) => {
+    setFormData(newFormData);
+    addDebugLog(`Form data updated: ${Object.keys(newFormData).length} fields`);
+    console.log("Form data changed:", newFormData);
+  };
+
+  // Debug form filling toggle
+  useEffect(() => {
+    console.log("App: Form filling state changed:", enableFormFilling);
+  }, [enableFormFilling]);
+
+  const handleSaveForm = async (formDataToSave: Record<string, any>) => {
+    try {
+      addDebugLog(
+        `Starting advanced form save with ${
+          Object.keys(formDataToSave).length
+        } fields`
+      );
+
+      if (!activeTab?.pdfBytes) {
+        addDebugLog("No PDF data available for saving");
+        alert("No PDF data available for saving");
+        return;
+      }
+
+      // Import the advanced form filling utilities
+      const { handleAdvancedFormSave, downloadFilledPDF } = await import(
+        "./utils/advancedFormFilling"
+      );
+
+      console.log("🚀 Starting advanced form save...");
+
+      const results = await handleAdvancedFormSave(
+        formDataToSave,
+        activeTab.pdfBytes,
+        {
+          enableFuzzyMatching: true,
+          enableValueNormalization: true,
+          skipProtectedFields: true,
+          createBackup: true,
+          flattenForm: false, // Keep editable for testing
+        }
+      );
+
+      // Download the filled PDF
+      downloadFilledPDF(results.pdfBytes!, activeTab.fileName);
+
+      // Show detailed results
+      let message = `Form processing completed!\n\n`;
+      message += `✅ Fields updated: ${results.fieldsUpdated}\n`;
+      message += `⏭️ Fields skipped: ${results.fieldsSkipped}\n`;
+      message += `❌ Fields with errors: ${results.fieldsWithErrors}\n`;
+
+      if (results.warnings.length > 0) {
+        message += `\n⚠️ Warnings:\n${results.warnings.slice(0, 5).join("\n")}`;
+        if (results.warnings.length > 5) {
+          message += `\n... and ${results.warnings.length - 5} more warnings`;
+        }
+      }
+
+      if (results.errors.length > 0) {
+        message += `\n❌ Errors:\n${results.errors.slice(0, 3).join("\n")}`;
+        if (results.errors.length > 3) {
+          message += `\n... and ${results.errors.length - 3} more errors`;
+        }
+      }
+
+      alert(message);
+      addDebugLog(message);
+
+      // Log detailed field results to console
+      console.log("📊 Detailed field results:", results.fieldResults);
+    } catch (error) {
+      console.error("💥 Advanced form save failed:", error);
+      alert(`Error saving form: ${error}`);
+      addDebugLog(`Error in advanced form save: ${error}`);
+    }
   };
 
   // Sidebar resize functionality
@@ -264,21 +363,6 @@ function App() {
       addDebugLog("Content copied to clipboard");
     } catch (err) {
       addDebugLog("Failed to copy content");
-    }
-  };
-
-  // Utility function to create a safe copy of ArrayBuffer
-  const createSafeArrayBufferCopy = (uint8Array: Uint8Array): Uint8Array => {
-    try {
-      // Method 1: Create a new ArrayBuffer and copy the data
-      const newBuffer = new ArrayBuffer(uint8Array.byteLength);
-      const newView = new Uint8Array(newBuffer);
-      newView.set(uint8Array);
-      return newView;
-    } catch (error) {
-      addDebugLog(`Error creating ArrayBuffer copy: ${error}`);
-      // Fallback method: slice the existing buffer
-      return new Uint8Array(uint8Array.buffer.slice(0));
     }
   };
 
@@ -406,8 +490,7 @@ function App() {
   useEffect(() => {
     try {
       // Try to use unpkg CDN first (most reliable for newer versions)
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://unpkg.com/pdfjs-dist@5.4.149/build/pdf.worker.min.mjs";
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
       addDebugLog("PDF.js worker configured with unpkg CDN");
     } catch (error) {
       // Fallback: create a simple blob worker that disables worker functionality
@@ -617,8 +700,14 @@ function App() {
         await window.electronAPI.hideBrowser();
         setIsWebView(false);
 
-        // Convert ArrayBuffer to Uint8Array
-        const pdfBytes = new Uint8Array(result.data);
+        // Convert ArrayBuffer to Uint8Array and create a copy to prevent detachment
+        const pdfBytes = new Uint8Array(result.data.slice(0));
+
+        // Store safe copy as regular array per tab
+        setTabPdfData((prev) => ({
+          ...prev,
+          [activeTab.id]: Array.from(pdfBytes),
+        }));
 
         // Validate the PDF file
         addDebugLog(`PDF file size: ${pdfBytes.length} bytes`);
@@ -670,10 +759,8 @@ function App() {
         // Clear any cached PDF document
         setPdfDocument(null);
 
-        // Set initial scale and render all pages in scrollable view
-        setPdfScale(1.2); // Better initial scale
-        await renderPDFPagesWorking(pdfBytes, 1.2);
-        addDebugLog("PDF loaded successfully in scrollable view");
+        // PDF loaded successfully - will be rendered by UnifiedPDFEditor
+        addDebugLog("PDF loaded successfully");
 
         // Automatically generate summary
         generatePdfSummary(pdfBytes);
@@ -686,6 +773,86 @@ function App() {
       }
     } catch (error) {
       addDebugLog(`Error opening PDF: ${error}`);
+    }
+  }
+
+  // Handle save from unified PDF editor
+  async function handleUnifiedPDFSave(fields: any[], _pdfBytes: Uint8Array) {
+    try {
+      const currentTabPdfData = tabPdfData[activeTab.id];
+      console.log("handleUnifiedPDFSave called with:", {
+        fieldsCount: fields?.length,
+        currentTabId: activeTab.id,
+        currentTabPdfDataLength: currentTabPdfData?.length,
+        fieldsData: fields?.map((f) => ({
+          name: f.name,
+          type: f.type,
+          value: f.value,
+        })),
+      });
+
+      if (!window.electronAPI?.pdfFinalizerFinalize) {
+        addDebugLog("PDF finalizer API not available");
+        alert("PDF save functionality not available");
+        return;
+      }
+
+      if (!currentTabPdfData || currentTabPdfData.length === 0) {
+        addDebugLog(
+          `No PDF data available for saving. currentTabPdfData: ${currentTabPdfData}, length: ${currentTabPdfData?.length}`
+        );
+        alert("No PDF data available for saving");
+        return;
+      }
+
+      addDebugLog(`Saving PDF with ${fields.length} form fields`);
+
+      // Convert fields to the format expected by PDF finalizer
+      const formFields = fields.map((field) => ({
+        name: field.name,
+        type: field.type,
+        pageNumber: field.pageNumber,
+        x: field.x,
+        y: field.y,
+        width: field.width,
+        height: field.height,
+        value: field.value,
+      }));
+
+      // Use the current tab's PDF bytes array directly (no ArrayBuffer issues)
+      const buffer = currentTabPdfData;
+
+      // Call PDF finalizer
+      const result = await window.electronAPI.pdfFinalizerFinalize(
+        buffer,
+        formFields,
+        { fontSize: 14 }
+      );
+
+      if (result.success && result.data) {
+        // Save the filled PDF
+        const filledPdfBytes = new Uint8Array(result.data);
+        await window.electronAPI.saveFileDialog(
+          filledPdfBytes,
+          `${activeTab.fileName?.replace(".pdf", "") || "document"}_filled.pdf`
+        );
+
+        // Use setTimeout to prevent state updates from interfering with PDF rendering
+        setTimeout(() => {
+          addDebugLog("PDF saved successfully");
+          alert("PDF saved successfully!");
+        }, 0);
+      } else {
+        setTimeout(() => {
+          addDebugLog(`PDF save failed: ${result.error}`);
+          alert(`Failed to save PDF: ${result.error || "Unknown error"}`);
+        }, 0);
+      }
+    } catch (error) {
+      setTimeout(() => {
+        addDebugLog(`PDF save error: ${error}`);
+        alert(`Error saving PDF: ${error}`);
+      }, 0);
     }
   }
 
@@ -717,13 +884,9 @@ function App() {
       if (!pdf) {
         addDebugLog(`Loading PDF document (not cached)`);
 
-        // Create a safe copy of the ArrayBuffer to prevent detachment issues
-        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
-        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
-
         // Enhanced PDF loading with better error handling
         const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytesCopy,
+          data: pdfBytes,
           useSystemFonts: true,
           disableFontFace: false,
           isEvalSupported: false,
@@ -988,13 +1151,9 @@ function App() {
       if (!pdf) {
         addDebugLog(`Loading PDF document (not cached)`);
 
-        // Create a safe copy of the ArrayBuffer to prevent detachment issues
-        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
-        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
-
         // Enhanced PDF loading with better error handling
         const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytesCopy,
+          data: pdfBytes,
           useSystemFonts: true,
           disableFontFace: false,
           isEvalSupported: false,
@@ -1183,9 +1342,8 @@ function App() {
       // Load PDF document
       let pdf = pdfDocument;
       if (!pdf) {
-        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
         const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytesCopy,
+          data: pdfBytes,
           useSystemFonts: true,
           disableFontFace: false,
           isEvalSupported: false,
@@ -1384,13 +1542,9 @@ function App() {
       if (!pdf) {
         addDebugLog(`Loading PDF document (not cached)`);
 
-        // Create a safe copy of the ArrayBuffer to prevent detachment issues
-        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
-        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
-
         // Enhanced PDF loading with better error handling
         const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytesCopy,
+          data: pdfBytes,
           useSystemFonts: true,
           disableFontFace: false,
           isEvalSupported: false,
@@ -1613,13 +1767,9 @@ function App() {
       if (!pdf) {
         addDebugLog(`Loading PDF document (not cached)`);
 
-        // Create a safe copy of the ArrayBuffer to prevent detachment issues
-        const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
-        addDebugLog(`Created safe copy of PDF bytes: ${pdfBytesCopy.length}`);
-
         // Enhanced PDF loading with better error handling
         const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytesCopy,
+          data: pdfBytes,
           useSystemFonts: true,
           disableFontFace: false,
           isEvalSupported: false,
@@ -1859,9 +2009,7 @@ function App() {
 
   async function extractPdfTextContent(pdfBytes: Uint8Array): Promise<string> {
     try {
-      // Create a safe copy of the ArrayBuffer to prevent detachment issues
-      const pdfBytesCopy = createSafeArrayBufferCopy(pdfBytes);
-      const pdf = await pdfjsLib.getDocument({ data: pdfBytesCopy }).promise;
+      const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
       let fullText = "";
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -2252,6 +2400,9 @@ ${textContent}`;
       newTab,
     ]);
 
+    // Clear PDF data for new tab (will be set when PDF is loaded)
+    // No need to clear tabPdfData as each tab has its own entry
+
     // Hide browser view for new tab
     if (window.electronAPI) {
       window.electronAPI.hideBrowser();
@@ -2310,6 +2461,28 @@ ${textContent}`;
             </button>
             <button className="nav-btn" onClick={reload} title="Reload">
               <ReloadIcon />
+            </button>
+            <button
+              className="nav-btn"
+              onClick={() => setDarkMode(!darkMode)}
+              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            >
+              {darkMode ? <SunIcon /> : <MoonIcon />}
+            </button>
+            <button
+              className="nav-btn"
+              onClick={() => setEnableFormFilling(!enableFormFilling)}
+              title={
+                enableFormFilling
+                  ? "Disable Form Filling"
+                  : "Enable Form Filling"
+              }
+              style={{
+                backgroundColor: enableFormFilling ? "#007acc" : "transparent",
+                color: enableFormFilling ? "white" : "inherit",
+              }}
+            >
+              <FileTextIcon />
             </button>
             <button className="nav-btn" onClick={addNewTab} title="New Tab">
               <PlusIcon />
@@ -2412,72 +2585,14 @@ ${textContent}`;
             </div>
           )}
 
-          {/* PDF Canvas */}
-          {activeTab && activeTab.isPDF && (
-            <div className="pdf-container">
-              <div className="pdf-toolbar">
-                <div className="pdf-nav-controls">
-                  <span className="page-info">
-                    {totalPages} page{totalPages !== 1 ? "s" : ""} - Scroll to
-                    navigate
-                  </span>
-                </div>
-
-                <div className="pdf-zoom-controls">
-                  <button
-                    className="pdf-btn"
-                    onClick={zoomOut}
-                    title="Zoom Out"
-                  >
-                    <ZoomOutIcon />
-                  </button>
-                  <span className="zoom-level">
-                    {Math.round(pdfScale * 100)}%
-                  </span>
-                  <button className="pdf-btn" onClick={zoomIn} title="Zoom In">
-                    <ZoomInIcon />
-                  </button>
-                  <button
-                    className="pdf-btn"
-                    onClick={fitToWidth}
-                    title="Fit to Width"
-                  >
-                    <CropIcon />
-                  </button>
-                  <button
-                    className="pdf-btn"
-                    onClick={resetZoom}
-                    title="Reset Zoom"
-                  >
-                    <ResetIcon />
-                  </button>
-                  <button
-                    className={`pdf-btn ${showTextLayerDebug ? "active" : ""}`}
-                    onClick={() => setShowTextLayerDebug(!showTextLayerDebug)}
-                    title="Toggle Text Layer Debug"
-                  >
-                    👁️
-                  </button>
-                </div>
-              </div>
-
-              <div className="pdf-viewer">
-                {/* PDF Reloading Indicator */}
-                {pdfReloading && (
-                  <div className="pdf-loading-overlay">
-                    <div className="pdf-loading-spinner">
-                      <ReloadIcon className="spinning" />
-                      <span>Reloading PDF...</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="pdf-page-container">
-                  <canvas ref={canvasRef} className="pdf-canvas" />
-                  <div className="pdf-text-layer" id="pdf-text-layer"></div>
-                </div>
-              </div>
-            </div>
+          {/* PDF Viewer */}
+          {activeTab && activeTab.isPDF && currentTabPdfBytes && (
+            <UnifiedPDFEditor
+              key={activeTab.id} // Force remount only when tab changes
+              pdfBytes={currentTabPdfBytes}
+              editMode={enableFormFilling}
+              onSave={handleUnifiedPDFSave}
+            />
           )}
 
           {/* Settings Tab */}

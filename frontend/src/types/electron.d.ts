@@ -52,6 +52,14 @@ export interface ElectronAPI {
   llmAutofillUpdateProfile: (field: string, value: string) => Promise<AutofillUpdateResult>;
   llmAutofillGetPerformance: () => Promise<AutofillPerformanceResult>;
   llmAutofillCheckStatus: () => Promise<AutofillStatusResult>;
+
+  // PDF Processor APIs (OCR + AI approach)
+  pdfProcessorAnalyze: (pdfBuffer: ArrayBuffer, options?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  pdfProcessorCheckAvailability: () => Promise<{ success: boolean; data?: { available: boolean; reason?: string }; error?: string }>;
+
+  // PDF Finalizer APIs (burning in form data)
+  pdfFinalizerFinalize: (originalPdfBuffer: ArrayBuffer | number[], formData: any, options?: any) => Promise<{ success: boolean; data?: ArrayBuffer; error?: string }>;
+  pdfFinalizerValidateFormData: (formData: any) => Promise<{ success: boolean; data?: any; error?: string }>;
 }
 
 // LLM Autofill Type Definitions

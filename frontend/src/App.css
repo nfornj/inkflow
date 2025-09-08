@@ -116,6 +116,143 @@ body, html, #root {
   color: #c4c4c4;
 }
 
+/* Dark mode toggle button special styling */
+.nav-btn[title*="Dark Mode"], .nav-btn[title*="Light Mode"] {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.nav-btn[title*="Dark Mode"]:hover, .nav-btn[title*="Light Mode"]:hover {
+  background: #505050;
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.nav-btn[title*="Dark Mode"]:active, .nav-btn[title*="Light Mode"]:active {
+  transform: scale(0.95);
+}
+
+/* PDF Viewer Dark Mode Styles */
+.rpv-core__viewer--dark-theme {
+  --rpv-core__viewer--background-color: #1a1a1a !important;
+  --rpv-core__viewer--color: #ffffff !important;
+  --rpv-core__viewer--border-color: #333333 !important;
+  
+  /* Toolbar dark mode */
+  --rpv-toolbar__item--background-color: #2a2a2a !important;
+  --rpv-toolbar__item--color: #ffffff !important;
+  --rpv-toolbar__item--hover-background-color: #3a3a3a !important;
+  --rpv-toolbar__item--active-background-color: #4a4a4a !important;
+  
+  /* Sidebar dark mode */
+  --rpv-sidebar__content--background-color: #1e1e1e !important;
+  --rpv-sidebar__content--color: #ffffff !important;
+  --rpv-sidebar__tab--background-color: #2a2a2a !important;
+  --rpv-sidebar__tab--color: #ffffff !important;
+  --rpv-sidebar__tab--hover-background-color: #3a3a3a !important;
+  --rpv-sidebar__tab--active-background-color: #4a4a4a !important;
+  
+  /* Page dark mode */
+  --rpv-core__page-layer--background-color: #2a2a2a !important;
+  --rpv-core__page-layer--border-color: #333333 !important;
+  
+  /* Text layer dark mode */
+  --rpv-core__text-layer--color: #ffffff !important;
+  --rpv-core__text-layer--background-color: transparent !important;
+  
+  /* Annotation layer dark mode */
+  --rpv-core__annotation-layer--color: #ffffff !important;
+  
+  /* Scrollbar dark mode */
+  --rpv-core__scrollbar--background-color: #333333 !important;
+  --rpv-core__scrollbar--thumb-color: #555555 !important;
+  --rpv-core__scrollbar--thumb-hover-color: #666666 !important;
+}
+
+/* Override specific react-pdf-viewer classes for dark mode */
+.rpv-core__viewer--dark-theme .rpv-core__viewer {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-toolbar {
+  background-color: #2a2a2a !important;
+  border-bottom: 1px solid #333333 !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-toolbar__item {
+  background-color: #2a2a2a !important;
+  color: #ffffff !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-toolbar__item:hover {
+  background-color: #3a3a3a !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-toolbar__item--active {
+  background-color: #4a4a4a !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-sidebar {
+  background-color: #1e1e1e !important;
+  border-right: 1px solid #333333 !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-sidebar__content {
+  background-color: #1e1e1e !important;
+  color: #ffffff !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-sidebar__tab {
+  background-color: #2a2a2a !important;
+  color: #ffffff !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-sidebar__tab:hover {
+  background-color: #3a3a3a !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-sidebar__tab--active {
+  background-color: #4a4a4a !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-core__page-layer {
+  background-color: #2a2a2a !important;
+  border: 1px solid #333333 !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-core__text-layer {
+  color: #ffffff !important;
+}
+
+.rpv-core__viewer--dark-theme .rpv-core__annotation-layer {
+  color: #ffffff !important;
+}
+
+/* Scrollbar styling for dark mode */
+.rpv-core__viewer--dark-theme ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.rpv-core__viewer--dark-theme ::-webkit-scrollbar-track {
+  background: #333333;
+}
+
+.rpv-core__viewer--dark-theme ::-webkit-scrollbar-thumb {
+  background: #555555;
+  border-radius: 4px;
+}
+
+.rpv-core__viewer--dark-theme ::-webkit-scrollbar-thumb:hover {
+  background: #666666;
+}
+
+.rpv-core__viewer--dark-theme ::-webkit-scrollbar-corner {
+  background: #333333;
+}
+
 /* Chrome-style Omnibox */
 .omnibox-form {
   flex: 1;

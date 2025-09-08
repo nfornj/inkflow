@@ -1,0 +1,334 @@
+/* Unified PDF Editor Styles - DocHub-like Design */
+
+.unified-pdf-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f8f9fa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Toolbar Styles */
+.pdf-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #e1e5e9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbar-btn {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.toolbar-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-btn {
+  background: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+.save-btn:hover {
+  background: #059669;
+  border-color: #059669;
+}
+
+/* Page Navigation */
+.page-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  background: #ffffff;
+  border-bottom: 1px solid #e1e5e9;
+}
+
+.page-navigation button {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.page-navigation button:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.page-navigation button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-navigation span {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+/* PDF Viewer Container */
+.pdf-viewer-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 20px;
+  overflow: auto;
+  background: #f8f9fa;
+}
+
+.pdf-canvas-container {
+  position: relative;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pdf-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Form Field Overlays */
+.form-field-overlay {
+  position: absolute;
+  border: 2px solid #3b82f6;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+
+.form-field-overlay:hover {
+  border-color: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.form-field-overlay input[type="text"] {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: transparent;
+  color: #1f2937;
+}
+
+.form-field-overlay input[type="text"]:focus {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.form-field-overlay input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 1px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
+
+.form-field-overlay .signature-field {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-style: italic;
+  color: #6b7280;
+  border: 1px dashed #d1d5db;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.form-field-overlay .signature-field:hover {
+  background: rgba(59, 130, 246, 0.05);
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.form-field-overlay .signature-field.has-signature {
+  font-style: normal;
+  font-weight: 500;
+  color: #1f2937;
+  border-style: solid;
+}
+
+/* Zoom Controls */
+.zoom-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #ffffff;
+  border-top: 1px solid #e1e5e9;
+}
+
+.zoom-controls button {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.zoom-controls button:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.zoom-controls span {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  min-width: 50px;
+  text-align: center;
+}
+
+/* Loading and Error States */
+.pdf-editor-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: #f8f9fa;
+}
+
+.loading-spinner {
+  padding: 20px;
+  font-size: 16px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.pdf-editor-error {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: #f8f9fa;
+}
+
+.error-message {
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  max-width: 400px;
+}
+
+.error-message h3 {
+  margin: 0 0 8px 0;
+  color: #dc2626;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.error-message p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .pdf-toolbar {
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+  }
+  
+  .toolbar-group {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .pdf-viewer-container {
+    padding: 10px;
+  }
+  
+  .zoom-controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/* Accessibility */
+.toolbar-btn:focus,
+.page-navigation button:focus,
+.zoom-controls button:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.form-field-overlay input:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+
+/* Animation for field placement */
+.form-field-overlay {
+  animation: fieldAppear 0.3s ease-out;
+}
+
+@keyframes fieldAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

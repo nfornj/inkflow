@@ -1,60 +1,85 @@
-import React, { useState, useCallback } from "react";
-import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/esm/Page/AnnotationLayer.css";
-import "react-pdf/dist/esm/Page/TextLayer.css";
+import React, { useState, useEffect } from "react";
+import { Viewer, Worker } from "@react-pdf-viewer/core";
+import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
+import { toolbarPlugin } from "@react-pdf-viewer/toolbar";
+import EnhancedFormOverlay from "./EnhancedFormOverlay";
 
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// Import the styles
+import "@react-pdf-viewer/core/lib/styles/index.css";
+import "@react-pdf-viewer/default-layout/lib/styles/index.css";
+import "@react-pdf-viewer/toolbar/lib/styles/index.css";
 
 interface PDFViewerProps {
   pdfBytes: Uint8Array;
   onPageChange?: (pageNumber: number) => void;
   onDocumentLoadSuccess?: (numPages: number) => void;
+  darkMode?: boolean;
+  enableFormFilling?: boolean;
+  onFormDataChange?: (formData: Record<string, any>) => void;
+  onSaveForm?: (formData: Record<string, any>) => void;
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({
   pdfBytes,
   onPageChange: onPageChangeProp,
   onDocumentLoadSuccess: onDocumentLoadSuccessProp,
+  darkMode = false,
+  enableFormFilling = false,
+  onFormDataChange,
+  onSaveForm,
 }) => {
-  const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.0);
+  const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
 
-  const onDocumentLoadSuccess = useCallback(
-    ({ numPages }: { numPages: number }) => {
-      setNumPages(numPages);
-      onDocumentLoadSuccessProp?.(numPages);
-    },
-    [onDocumentLoadSuccessProp]
-  );
+  console.log("PDFViewer: Props received:", {
+    pdfBytes: pdfBytes ? pdfBytes.length : "null",
+    darkMode,
+    enableFormFilling,
+    hasOnFormDataChange: !!onFormDataChange,
+    hasOnSaveForm: !!onSaveForm,
+  });
 
-  const onPageChange = useCallback(
-    (pageNumber: number) => {
-      setPageNumber(pageNumber);
-      onPageChangeProp?.(pageNumber);
-    },
-    [onPageChangeProp]
-  );
+  // Debug form filling state
+  useEffect(() => {
+    console.log("PDFViewer: Form filling state changed:", enableFormFilling);
+    if (enableFormFilling) {
+      console.log(
+        "PDFViewer: Rendering FormOverlay with enableFormFilling:",
+        enableFormFilling
+      );
+    } else {
+      console.log(
+        "PDFViewer: Form filling disabled, not rendering FormOverlay"
+      );
+    }
+  }, [enableFormFilling]);
 
-  const goToPrevPage = () => {
-    setPageNumber((prev) => Math.max(prev - 1, 1));
+  // Initialize plugins
+  const defaultLayoutPluginInstance = defaultLayoutPlugin({
+    sidebarTabs: (defaultTabs) => [
+      defaultTabs[0], // Thumbnail tab
+      defaultTabs[1], // Bookmark tab
+    ],
+  });
+
+  const toolbarPluginInstance = toolbarPlugin();
+
+  // Use Uint8Array directly for react-pdf-viewer
+  useEffect(() => {
+    if (pdfBytes && pdfBytes.length > 0) {
+      setPdfData(pdfBytes);
+    }
+  }, [pdfBytes]);
+
+  // Handle document load success
+  const handleDocumentLoad = (e: any) => {
+    const { numPages } = e.doc;
+    onDocumentLoadSuccessProp?.(numPages);
   };
 
-  const goToNextPage = () => {
-    setPageNumber((prev) => Math.min(prev + 1, numPages));
-  };
-
-  const zoomIn = () => {
-    setScale((prev) => Math.min(prev + 0.2, 3.0));
-  };
-
-  const zoomOut = () => {
-    setScale((prev) => Math.max(prev - 0.2, 0.5));
-  };
-
-  const resetZoom = () => {
-    setScale(1.0);
+  // Handle page change
+  const handlePageChange = (e: any) => {
+    const { currentPage } = e;
+    onPageChangeProp?.(currentPage + 1); // Convert to 1-based indexing
   };
 
   return (
@@ -64,157 +89,66 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "#f5f5f5",
+        backgroundColor: darkMode ? "#1a1a1a" : "#f5f5f5",
+        color: darkMode ? "#ffffff" : "#000000",
+        position: "relative",
       }}
     >
-      {/* Toolbar */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 20px",
-          backgroundColor: "#2a2a2a",
-          color: "white",
-          borderBottom: "1px solid #444",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <button
-            onClick={goToPrevPage}
-            disabled={pageNumber <= 1}
-            style={{
-              padding: "5px 10px",
-              backgroundColor: pageNumber <= 1 ? "#555" : "#007acc",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: pageNumber <= 1 ? "not-allowed" : "pointer",
-            }}
-          >
-            ← Previous
-          </button>
-          <span>
-            Page {pageNumber} of {numPages}
-          </span>
-          <button
-            onClick={goToNextPage}
-            disabled={pageNumber >= numPages}
-            style={{
-              padding: "5px 10px",
-              backgroundColor: pageNumber >= numPages ? "#555" : "#007acc",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: pageNumber >= numPages ? "not-allowed" : "pointer",
-            }}
-          >
-            Next →
-          </button>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <button
-            onClick={zoomOut}
-            style={{
-              padding: "5px 10px",
-              backgroundColor: "#007acc",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            Zoom Out
-          </button>
-          <span>{Math.round(scale * 100)}%</span>
-          <button
-            onClick={zoomIn}
-            style={{
-              padding: "5px 10px",
-              backgroundColor: "#007acc",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            Zoom In
-          </button>
-          <button
-            onClick={resetZoom}
-            style={{
-              padding: "5px 10px",
-              backgroundColor: "#666",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            Reset
-          </button>
-        </div>
-      </div>
-
-      {/* PDF Content - Scrollable */}
-      <div
-        style={{
-          flex: 1,
-          overflow: "auto",
-          padding: "20px",
-          display: "flex",
-          justifyContent: "center",
-          backgroundColor: "#f5f5f5",
-        }}
-      >
-        <Document
-          file={{ data: pdfBytes }}
-          onLoadSuccess={onDocumentLoadSuccess}
-          loading={
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "200px",
-                color: "#666",
-              }}
-            >
-              Loading PDF...
-            </div>
-          }
-          error={
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "200px",
-                color: "#ff6b6b",
-              }}
-            >
-              Error loading PDF
-            </div>
-          }
+      {!pdfData ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "200px",
+            color: darkMode ? "#cccccc" : "#666",
+          }}
         >
-          <div
-            style={{
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              backgroundColor: "white",
-              borderRadius: "8px",
-              overflow: "hidden",
-            }}
-          >
-            <Page
-              pageNumber={pageNumber}
-              scale={scale}
-              renderTextLayer={true}
-              renderAnnotationLayer={true}
-            />
-          </div>
-        </Document>
-      </div>
+          Preparing PDF...
+        </div>
+      ) : (
+        <>
+          <Worker workerUrl="/pdf.worker.min.js">
+            <div
+              className={darkMode ? "rpv-core__viewer--dark-theme" : ""}
+              style={{
+                height: "100%",
+                width: "100%",
+              }}
+            >
+              <Viewer
+                fileUrl={pdfData}
+                plugins={[defaultLayoutPluginInstance, toolbarPluginInstance]}
+                onDocumentLoad={handleDocumentLoad}
+                onPageChange={handlePageChange}
+              />
+            </div>
+          </Worker>
+
+          {/* Form overlay for interactive form filling */}
+          {enableFormFilling && (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                pointerEvents: "none", // Allow clicks to pass through to PDF viewer
+                zIndex: 1000,
+              }}
+            >
+              <div style={{ pointerEvents: "auto" }}>
+                <EnhancedFormOverlay
+                  pdfBytes={pdfBytes}
+                  onFormDataChange={onFormDataChange}
+                  onSaveForm={onSaveForm}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };

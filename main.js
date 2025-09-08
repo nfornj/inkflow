@@ -8,11 +8,19 @@ require('dotenv').config();
 // Import LLM Autofill Engine
 const AutofillEngine = require('./src/main/autofill-engine');
 
+// Import PDF Processor for OCR + AI approach
+const PDFProcessor = require('./src/main/pdf-processor');
+
+// Import PDF Finalizer for burning in form data
+const PDFFinalizer = require('./src/main/pdf-finalizer');
+
 // Global variables
 let mainWindow;
 let browserView;
 let currentBrowserViewId = null;
 let autofillEngine = null;
+let pdfProcessor = null;
+let pdfFinalizer = null;
 
 // Environment check
 const isDev = process.env.NODE_ENV === 'development';
@@ -59,6 +67,22 @@ async function createWindow() {
     console.log('LLM Autofill Engine initialized successfully');
   } catch (error) {
     console.error('Failed to initialize LLM Autofill Engine:', error);
+  }
+
+  // Initialize PDF Processor
+  try {
+    pdfProcessor = new PDFProcessor();
+    console.log('PDF Processor initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize PDF Processor:', error);
+  }
+
+  // Initialize PDF Finalizer
+  try {
+    pdfFinalizer = new PDFFinalizer();
+    console.log('PDF Finalizer initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize PDF Finalizer:', error);
   }
 
   // Show window when ready and focus it
@@ -1364,6 +1388,65 @@ ipcMain.handle('request-macos-permissions', async () => {
       success: false,
       message: `Error checking permissions: ${error.message}`
     };
+  }
+});
+
+// PDF Processor IPC Handlers
+ipcMain.handle('pdf-processor-analyze', async (event, pdfBuffer, options = {}) => {
+  try {
+    if (!pdfProcessor) {
+      return { success: false, error: 'PDF Processor not initialized' };
+    }
+
+    const result = await pdfProcessor.processPDF(pdfBuffer, options);
+    return result;
+  } catch (error) {
+    console.error('Error processing PDF with OCR + AI:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('pdf-processor-check-availability', async (event) => {
+  try {
+    const availability = await PDFProcessor.checkAvailability();
+    return { success: true, data: availability };
+  } catch (error) {
+    console.error('Error checking PDF processor availability:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// PDF Finalizer IPC Handlers
+ipcMain.handle('pdf-finalizer-finalize', async (event, originalPdfBuffer, formData, options = {}) => {
+  try {
+    if (!pdfFinalizer) {
+      return { success: false, error: 'PDF Finalizer not initialized' };
+    }
+
+    // Convert array back to Buffer if needed (for IPC compatibility)
+    const pdfBuffer = Array.isArray(originalPdfBuffer) 
+      ? Buffer.from(originalPdfBuffer) 
+      : originalPdfBuffer;
+
+    const finalizedPdfBytes = await pdfFinalizer.finalizePDF(pdfBuffer, formData, options);
+    return { success: true, data: Array.from(finalizedPdfBytes) };
+  } catch (error) {
+    console.error('Error finalizing PDF:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('pdf-finalizer-validate-form-data', async (event, formData) => {
+  try {
+    if (!pdfFinalizer) {
+      return { success: false, error: 'PDF Finalizer not initialized' };
+    }
+
+    const validation = pdfFinalizer.validateFormData(formData);
+    return { success: true, data: validation };
+  } catch (error) {
+    console.error('Error validating form data:', error);
+    return { success: false, error: error.message };
   }
 });
 

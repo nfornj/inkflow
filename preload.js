@@ -60,6 +60,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners(channel);
   },
 
+  // PDF Processor APIs (OCR + AI approach)
+  pdfProcessorAnalyze: (pdfBuffer, options) => ipcRenderer.invoke('pdf-processor-analyze', pdfBuffer, options),
+  pdfProcessorCheckAvailability: () => ipcRenderer.invoke('pdf-processor-check-availability'),
+
+  // PDF Finalizer APIs (burning in form data)
+  pdfFinalizerFinalize: (originalPdfBuffer, formData, options) => ipcRenderer.invoke('pdf-finalizer-finalize', originalPdfBuffer, formData, options),
+  pdfFinalizerValidateFormData: (formData) => ipcRenderer.invoke('pdf-finalizer-validate-form-data', formData),
+
   // LLM Autofill APIs
   llmAutofillGetSuggestion: (fieldContext) => ipcRenderer.invoke('llm-autofill-get-suggestion', fieldContext),
   llmAutofillGenerateQuestion: (fieldContext) => ipcRenderer.invoke('llm-autofill-generate-question', fieldContext),
