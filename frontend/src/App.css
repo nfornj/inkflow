@@ -16,6 +16,245 @@
   letter-spacing: -0.01em;
 }
 
+/* Light Theme - System-like */
+.app.light-theme {
+  --bg-primary: #fafafa;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #eeeeee;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #8a8a8a;
+  --border-color: #d1d1d1;
+  --border-light: #e5e5e5;
+  --shadow: rgba(0, 0, 0, 0.08);
+  --shadow-hover: rgba(0, 0, 0, 0.12);
+}
+
+.app.light-theme body,
+.app.light-theme html,
+.app.light-theme #root {
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+}
+
+.app.light-theme .header {
+  background: rgba(250, 250, 250, 0.95);
+  border-bottom: none; /* Remove border to eliminate gap */
+  color: #1a1a1a;
+}
+
+.app.light-theme .main-content {
+  background: #f5f5f5;
+}
+
+.app.light-theme .content-area {
+  background: #fafafa;
+}
+
+.app.light-theme .sidebar {
+  background: rgba(250, 250, 250, 0.95);
+  border-left: 1px solid #d1d1d1;
+  color: #1a1a1a;
+}
+
+.app.light-theme .sidebar .gemini-header h1 {
+  color: #212529;
+}
+
+.app.light-theme .sidebar .assistant-name {
+  color: #6c757d;
+}
+
+.app.light-theme .sidebar .modern-shine {
+  color: #495057;
+}
+
+.app.light-theme .sidebar .cursor-markdown {
+  color: #212529;
+}
+
+.app.light-theme .sidebar .cursor-markdown h1,
+.app.light-theme .sidebar .cursor-markdown h2,
+.app.light-theme .sidebar .cursor-markdown h3,
+.app.light-theme .sidebar .cursor-markdown h4,
+.app.light-theme .sidebar .cursor-markdown h5,
+.app.light-theme .sidebar .cursor-markdown h6 {
+  color: #212529;
+}
+
+.app.light-theme .sidebar .cursor-markdown strong {
+  color: #000000;
+}
+
+.app.light-theme .nav-btn {
+  color: #6c757d;
+}
+
+.app.light-theme .nav-btn:hover {
+  background: #e9ecef;
+  color: #212529;
+}
+
+.app.light-theme .header-btn {
+  color: #6c757d;
+  border-color: #dee2e6;
+}
+
+.app.light-theme .header-btn:hover {
+  background: #e9ecef;
+  color: #212529;
+  border-color: #adb5bd;
+}
+
+.app.light-theme .tab {
+  background: #f5f5f5;
+  color: #4a4a4a; /* Better contrast */
+  border: 1px solid #d1d1d1;
+}
+
+.app.light-theme .tab:hover {
+  background: #eeeeee;
+  color: #1a1a1a;
+}
+
+.app.light-theme .tab.active {
+  background: #fafafa;
+  border-color: #0078d4; /* Blue border for active tab */
+  color: #1a1a1a;
+  border-bottom: 1px solid #fafafa; /* Connect with content area */
+}
+
+/* Light theme tab text */
+.app.light-theme .tab span {
+  color: #2a2a2a; /* Dark text for light theme */
+  font-weight: 500; /* Slightly bolder for better visibility */
+}
+
+.app.light-theme .tab.active span {
+  color: #1a1a1a; /* Darker text for active tab */
+  font-weight: 600; /* Bolder for active tab */
+}
+
+.app.light-theme .tab:hover span {
+  color: #000000; /* Black text on hover */
+}
+
+.app.light-theme .omnibox {
+  background: #ffffff;
+  border-color: #dee2e6;
+  color: #212529;
+}
+
+.app.light-theme .omnibox:focus {
+  border-color: #0078d4;
+  background: #ffffff;
+}
+
+.app.light-theme .omnibox::placeholder {
+  color: #adb5bd;
+}
+
+.app.light-theme .pdf-toolbar {
+  background: #ffffff;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.app.light-theme .pdf-btn {
+  color: #6c757d;
+}
+
+.app.light-theme .pdf-btn:hover:not(:disabled) {
+  background: #e9ecef;
+  color: #212529;
+}
+
+.app.light-theme .page-info,
+.app.light-theme .zoom-level {
+  color: #6c757d;
+}
+
+.app.light-theme .tab-bar {
+  background: #f5f5f5;
+  border-bottom: 1px solid #d1d1d1;
+}
+
+.app.light-theme .browser-indicator {
+  background: #f5f5f5;
+  border-bottom: 1px solid #d1d1d1;
+  color: #4a4a4a;
+}
+
+.app.light-theme .gemini-header {
+  background: #ffffff;
+  color: #212529;
+}
+
+.app.light-theme .gemini-chat {
+  background: #f8f9fa;
+}
+
+.app.light-theme .message-content {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #212529;
+}
+
+.app.light-theme .gemini-input {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.app.light-theme .gemini-input:focus-within {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.app.light-theme .gemini-input textarea {
+  color: #212529;
+}
+
+.app.light-theme .gemini-input textarea::placeholder {
+  color: rgba(0, 0, 0, 0.38);
+}
+
+.app.light-theme .attach-button {
+  color: rgba(0, 0, 0, 0.54);
+}
+
+.app.light-theme .attach-button:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.87);
+}
+
+/* PDF Viewer Theme Support */
+.app.light-theme .pdf-viewer {
+  background: #f5f5f5;
+}
+
+.app.light-theme .pdf-page-container {
+  background: #fafafa;
+  border: 1px solid #d1d1d1;
+}
+
+.app.light-theme .pdf-canvas {
+  background: #fafafa;
+  border: 1px solid #d1d1d1;
+}
+
+/* Dark theme PDF viewer */
+.app.dark-theme .pdf-viewer {
+  background: #1e1e1e;
+}
+
+.app.dark-theme .pdf-page-container {
+  background: #2a2a2a;
+  border: 1px solid #404040;
+}
+
+.app.dark-theme .pdf-canvas {
+  background: #2a2a2a;
+  border: 1px solid #404040;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -34,6 +273,9 @@ body, html, #root {
   flex-direction: column;
   height: 100%;
   background: transparent;
+  margin: 0;
+  padding: 0;
+  gap: 0; /* Ensure no gaps between flex children */
 }
 
 /* Modern Header */
@@ -42,14 +284,14 @@ body, html, #root {
   align-items: center;
   background: rgba(15, 15, 15, 0.95);
   backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 8px 16px;
+  border-bottom: none; /* Remove border to eliminate gap */
+  padding: 0 16px; /* Remove vertical padding */
   padding-left: 80px; /* Space for macOS window controls */
   height: 52px;
   gap: 12px;
   min-height: 52px;
   -webkit-app-region: drag; /* Make header draggable on macOS */
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: none; /* Remove shadow to eliminate visual gap */
 }
 
 .header-left {
@@ -117,21 +359,7 @@ body, html, #root {
 }
 
 /* Dark mode toggle button special styling */
-.nav-btn[title*="Dark Mode"], .nav-btn[title*="Light Mode"] {
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s ease;
-}
-
-.nav-btn[title*="Dark Mode"]:hover, .nav-btn[title*="Light Mode"]:hover {
-  background: #505050;
-  transform: scale(1.05);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.nav-btn[title*="Dark Mode"]:active, .nav-btn[title*="Light Mode"]:active {
-  transform: scale(0.95);
-}
+/* Removed direct theme toggle styles - theme is now in Settings */
 
 /* PDF Viewer Dark Mode Styles */
 .rpv-core__viewer--dark-theme {
@@ -321,7 +549,8 @@ body, html, #root {
   display: flex;
   background: #2d2d2d;
   border-bottom: 1px solid #404040;
-  padding: 2px 12px 0 12px;
+  padding: 0 12px; /* Remove top padding to eliminate gap */
+  margin: 0; /* Ensure no margin */
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -385,7 +614,7 @@ body, html, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
+  opacity: 0.6; /* Make visible by default */
   transition: all 0.15s ease;
 }
 
@@ -398,14 +627,34 @@ body, html, #root {
   color: #fff;
 }
 
+/* Light theme tab close buttons */
+.app.light-theme .tab-close {
+  color: #4a4a4a;
+  opacity: 0.8; /* More visible in light theme */
+  background: rgba(0, 0, 0, 0.05); /* Subtle background for visibility */
+  border-radius: 50%; /* Make it circular */
+}
+
+.app.light-theme .tab:hover .tab-close {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.app.light-theme .tab-close:hover {
+  background: #d1d1d1;
+  color: #000000;
+  transform: scale(1.1); /* Slight scale on hover */
+}
+
 /* Main Content Area */
 .main-content {
   display: flex;
   flex: 1;
   background: #1e1e1e;
-  overflow: visible; /* Allow scrolling for PDF content */
+  overflow: hidden; /* Prevent overflow issues */
   position: relative; /* Added to establish positioning context */
   min-height: 0; /* Allow flex shrinking */
+  width: 100%; /* Ensure full width */
 }
 
 .content-area {
@@ -416,8 +665,9 @@ body, html, #root {
   background: #262626;
   margin: 0;
   padding: 0;
-  overflow: visible; /* Allow scrolling for PDF content */
+  overflow: hidden; /* Prevent overflow issues */
   height: 100%;
+  min-width: 400px; /* Minimum width to ensure usability */
 }
 
 /* Loading Overlay */
@@ -456,12 +706,13 @@ body, html, #root {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 12px;
+  padding: 0 12px; /* Remove top/bottom padding to eliminate gap */
   background: #2d2d2d;
   border-bottom: 1px solid #404040;
   font-size: 13px;
   color: #c4c4c4;
   flex-shrink: 0;
+  min-height: 32px; /* Ensure consistent height */
 }
 
 .url-display {
@@ -479,6 +730,8 @@ body, html, #root {
   background: #2a2a2a;
   overflow: hidden;
   height: 100%;
+  min-width: 0; /* Allow flex shrinking */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 
 .pdf-toolbar {
@@ -540,11 +793,12 @@ body, html, #root {
   justify-content: center;
   align-items: flex-start;
   overflow: auto;
-  padding: 20px;
+  padding: 0; /* Remove top padding to eliminate gap */
   min-height: 0; /* Allow flex shrinking */
   width: 100%;
   scroll-behavior: smooth;
   position: relative; /* For loading overlay positioning */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 
 /* Custom scrollbar for PDF viewer */
@@ -578,6 +832,8 @@ body, html, #root {
   height: 100%;
   min-height: 600px;
   overflow: visible;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .pdf-canvas {
@@ -585,11 +841,12 @@ body, html, #root {
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   background: white;
-  max-width: calc(100vw - 400px); /* Account for sidebar */
+  max-width: 100%; /* Responsive width */
   max-height: none; /* Allow full height */
   height: auto;
   display: block;
   margin: 0 auto; /* Center the canvas */
+  width: auto; /* Allow natural width */
 }
 
 .pdf-scroll-container {
@@ -887,11 +1144,13 @@ body, html, #root {
   border-left: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden; /* Prevent overflow issues */
   flex-shrink: 0;
   position: relative;
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+  min-width: 280px; /* Minimum width */
+  max-width: 50vw; /* Maximum width to prevent taking too much space */
 }
 
 .sidebar.resizing {
@@ -2000,8 +2259,8 @@ body, html, #root {
 .settings-tab {
   flex: 1;
   padding: 0;
-  background: #1a1a1a;
-  color: #ffffff;
+  background: var(--bg-primary, #1a1a1a);
+  color: var(--text-primary, #ffffff);
   overflow-y: auto;
   min-height: 100vh;
 }
@@ -2016,7 +2275,7 @@ body, html, #root {
   text-align: center;
   margin-bottom: 40px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #333333;
+  border-bottom: 1px solid var(--border-color, #333333);
 }
 
 .settings-header-tab h2 {
@@ -2024,13 +2283,13 @@ body, html, #root {
   font-weight: 600;
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   margin: 0 0 8px 0;
-  color: #ffffff;
+  color: var(--text-primary, #ffffff);
   letter-spacing: -0.02em;
 }
 
 .settings-header-tab p {
   font-size: 16px;
-  color: #888888;
+  color: var(--text-secondary, #888888);
   margin: 0;
 }
 
@@ -2041,17 +2300,84 @@ body, html, #root {
 }
 
 .setting-section-tab {
-  background: #252525;
+  background: var(--bg-secondary, #252525);
   border-radius: 12px;
   padding: 24px;
-  border: 1px solid #333333;
+  border: 1px solid var(--border-color, #333333);
+}
+
+/* Appearance card styling */
+.appearance-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.theme-choice {
+  display: flex;
+  gap: 12px;
+}
+
+.theme-pill {
+  border: 1px solid var(--border-color, #3a3a3a);
+  background: var(--bg-secondary, #1a1a1a);
+  color: var(--text-primary, #e6e6e6);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.theme-pill.active {
+  border-color: var(--accent, #3b82f6);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent, #3b82f6) 30%, transparent);
+}
+
+.accent-input {
+  width: 48px;
+  height: 28px;
+  border: 1px solid var(--border-color, #3a3a3a);
+  border-radius: 6px;
+  background: transparent;
+}
+
+.app.light-theme .setting-section-tab {
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+}
+
+.app.light-theme .theme-pill {
+  background: #f5f5f5;
+  color: #1a1a1a;
+  border-color: #d1d1d1;
+}
+
+.app.light-theme .theme-pill.active {
+  border-color: var(--accent, #3b82f6);
+}
+
+.accent-swatches {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.25);
+  cursor: pointer;
+}
+
+.app.light-theme .swatch {
+  border-color: rgba(0,0,0,0.2);
 }
 
 .setting-section-tab h3 {
   font-size: 20px;
   font-weight: 600;
   margin: 0 0 20px 0;
-  color: #ffffff;
+  color: var(--text-primary, #ffffff);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2833,9 +3159,16 @@ body, html, #root {
 }
 
 /* Responsive Design */
+@media (min-width: 1920px) {
+  .sidebar {
+    max-width: 600px; /* Cap sidebar width on very wide screens */
+  }
+}
+
 @media (max-width: 1024px) {
   .sidebar {
-    width: 280px;
+    min-width: 260px;
+    max-width: 40vw;
   }
   
   .header-center {
@@ -2853,7 +3186,7 @@ body, html, #root {
   }
   
   .pdf-viewer {
-    padding: 15px;
+    padding: 0; /* Remove padding to eliminate gap */
   }
 }
 
@@ -2862,11 +3195,17 @@ body, html, #root {
     flex-direction: column;
   }
   
+  .content-area {
+    min-width: 300px; /* Reduce minimum width on small screens */
+  }
+  
   .sidebar {
     width: 100%;
     height: 300px;
     border-left: none;
     border-top: 1px solid #404040;
+    min-width: auto; /* Remove minimum width constraint on mobile */
+    max-width: none; /* Remove maximum width constraint on mobile */
   }
   
   .header {
@@ -2893,7 +3232,7 @@ body, html, #root {
   }
   
   .pdf-viewer {
-    padding: 10px;
+    padding: 0; /* Remove padding to eliminate gap */
   }
   
   .pdf-btn {

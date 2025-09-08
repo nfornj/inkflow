@@ -79,3 +79,4 @@ async function testPDFForms() {
 }
 
 testPDFForms().catch(console.error);
+

@@ -3,14 +3,19 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Browser navigation
+  // Unified content navigation (web + PDF)
   navigateUrl: (url) => ipcRenderer.invoke('navigate-url', url),
+  loadPdfFile: (filePath) => ipcRenderer.invoke('load-pdf-file', filePath),
+  loadPdfData: (pdfData, fileName) => ipcRenderer.invoke('load-pdf-data', pdfData, fileName),
+  
+  // Browser navigation controls
   browserBack: () => ipcRenderer.invoke('browser-back'),
   browserForward: () => ipcRenderer.invoke('browser-forward'),
   browserReload: () => ipcRenderer.invoke('browser-reload'),
   browserStop: () => ipcRenderer.invoke('browser-stop'),
   hideBrowser: () => ipcRenderer.invoke('hide-browser'),
   showBrowser: () => ipcRenderer.invoke('show-browser'),
+  setActiveTab: (tabId) => ipcRenderer.invoke('set-active-tab', tabId),
 
   // File operations
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
@@ -43,8 +48,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window management
   windowResized: () => ipcRenderer.invoke('window-resized'),
+  sidebarResized: (sidebarWidth) => ipcRenderer.invoke('sidebar-resized', sidebarWidth),
+  updateLayout: (layout) => ipcRenderer.invoke('update-layout', layout),
+  setTheme: (theme) => ipcRenderer.invoke('set-theme', theme),
+  getThemeInfo: () => ipcRenderer.invoke('get-theme-info'),
+  onNativeThemeUpdated: (callback) => {
+    ipcRenderer.on('native-theme-updated', (event, data) => callback(data));
+  },
 
-  // Event listeners
+  // Settings API
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (partial) => ipcRenderer.invoke('update-settings', partial),
+
+  // Unified content event listeners
+  onUnifiedContentLoading: (callback) => {
+    ipcRenderer.on('unified-content-loading', (event, data) => callback(data));
+  },
+  onUnifiedContentLoaded: (callback) => {
+    ipcRenderer.on('unified-content-loaded', (event, data) => callback(data));
+  },
+  onUnifiedContentError: (callback) => {
+    ipcRenderer.on('unified-content-error', (event, data) => callback(data));
+  },
+  onUnifiedContentNavigate: (callback) => {
+    ipcRenderer.on('unified-content-navigate', (event, data) => callback(data));
+  },
+  onPdfDetected: (callback) => {
+    ipcRenderer.on('pdf-detected', (event, data) => callback(data));
+  },
+  
+  // Legacy browser event listeners (for backward compatibility)
   onBrowserLoading: (callback) => {
     ipcRenderer.on('browser-loading', (event, data) => callback(data));
   },

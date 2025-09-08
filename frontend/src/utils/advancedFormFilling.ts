@@ -491,3 +491,4 @@ export const downloadFilledPDF = (
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 };
+

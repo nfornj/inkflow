@@ -10,6 +10,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import UnifiedPDFEditor from "./components/UnifiedPDFEditor";
+import UnifiedContentViewer from "./components/UnifiedContentViewer";
 import "./components/UnifiedPDFEditor.css";
 import {
   ChevronLeftIcon,
@@ -37,7 +38,7 @@ import "./App.css";
 interface Tab {
   id: string;
   title: string;
-  isPDF: boolean;
+  contentType: "pdf" | "web" | "settings";
   isActive: boolean;
   isSettings?: boolean;
   pdfBytes?: Uint8Array;
@@ -45,12 +46,22 @@ interface Tab {
   filePath?: string;
   pageNum?: number;
   url?: string;
+  browserId?: string;
+
+  // Legacy support
+  isPDF?: boolean;
 }
 
 function App() {
   // Tab management
   const [tabs, setTabs] = useState<Tab[]>([
-    { id: "1", title: "New Tab", isPDF: false, isActive: true },
+    {
+      id: "1",
+      title: "New Tab",
+      contentType: "web",
+      isActive: true,
+      isPDF: false,
+    },
   ]);
   // Store PDF bytes per tab to prevent mixing between tabs
   const [tabPdfData, setTabPdfData] = useState<Record<string, number[]>>({});
@@ -114,6 +125,7 @@ function App() {
       const newSettingsTab: Tab = {
         id: `settings-${Date.now()}`,
         title: "Settings",
+        contentType: "settings",
         isPDF: false,
         isActive: true,
         isSettings: true,
@@ -153,7 +165,6 @@ function App() {
   const [pdfReloading, setPdfReloading] = useState(false);
   const [useNewPDFViewer, setUseNewPDFViewer] = useState<boolean>(true);
   const [darkMode, setDarkMode] = useState<boolean>(false);
-  const [enableFormFilling, setEnableFormFilling] = useState<boolean>(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
 
   // Font customization state
@@ -183,9 +194,125 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [debugEnabled, addDebugLog]);
 
+  // Initialize theme and accent from settings; keep Electron in sync
+  useEffect(() => {
+    (async () => {
+      try {
+        const settings = await window.electronAPI?.getSettings();
+        const appearance = settings?.success
+          ? settings.data?.appearance || {}
+          : {};
+        const themeSource = appearance.themeSource || "system";
+        const themeInfo = await window.electronAPI?.getThemeInfo();
+        const systemDark = themeInfo?.success
+          ? themeInfo.data?.shouldUseDarkColors
+          : false;
+        const isDark =
+          themeSource === "system" ? !!systemDark : themeSource === "dark";
+        setDarkMode(isDark);
+        if (appearance.accentColor) {
+          document.documentElement.style.setProperty(
+            "--accent",
+            appearance.accentColor
+          );
+        }
+        await window.electronAPI?.setTheme(themeSource as any);
+      } catch {}
+    })();
+
+    // Listen for OS theme changes if user selects Device
+    try {
+      window.electronAPI?.onNativeThemeUpdated?.((data) => {
+        (async () => {
+          const settings = await window.electronAPI?.getSettings();
+          const appearance = settings?.success
+            ? settings.data?.appearance || {}
+            : {};
+          if ((appearance.themeSource || "system") === "system") {
+            setDarkMode(!!data.shouldUseDarkColors);
+          }
+        })();
+      });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.electronAPI?.setTheme(darkMode ? "dark" : "light");
+      // Recompute BrowserView bounds in case header/tab sizes changed with theme
+      const header = document.querySelector(".header") as HTMLElement | null;
+      const tabBar = document.querySelector(".tab-bar") as HTMLElement | null;
+      const browserIndicator = document.querySelector(
+        ".browser-indicator"
+      ) as HTMLElement | null;
+      const topInset =
+        (header?.offsetHeight || 0) +
+        (tabBar?.offsetHeight || 0) +
+        (browserIndicator?.offsetHeight || 0);
+      const sidebarEl = document.querySelector(
+        ".sidebar"
+      ) as HTMLElement | null;
+      const sidebarWidth = sidebarEl?.offsetWidth || 320;
+      window.electronAPI?.updateLayout({ topInset, sidebarWidth });
+      if (isWebView) {
+        window.electronAPI?.showBrowser();
+      }
+    } catch {}
+  }, [darkMode, isWebView]);
+
+  // Report layout metrics (top inset + sidebar width) to main for pixel-perfect BrowserView bounds
+  useEffect(() => {
+    const reportLayout = () => {
+      try {
+        const header = document.querySelector(".header") as HTMLElement | null;
+        const tabBar = document.querySelector(".tab-bar") as HTMLElement | null;
+        const browserIndicator = document.querySelector(
+          ".browser-indicator"
+        ) as HTMLElement | null;
+        const topInset =
+          (header?.offsetHeight || 0) +
+          (tabBar?.offsetHeight || 0) +
+          (browserIndicator?.offsetHeight || 0);
+        const sidebarEl = document.querySelector(
+          ".sidebar"
+        ) as HTMLElement | null;
+        const sidebarWidth = sidebarEl?.offsetWidth || 320;
+        window.electronAPI?.updateLayout({ topInset, sidebarWidth });
+      } catch {}
+    };
+
+    reportLayout();
+    window.addEventListener("resize", reportLayout);
+    return () => window.removeEventListener("resize", reportLayout);
+  }, []);
+
   // Sidebar resize state
   const [sidebarWidth, setSidebarWidth] = useState(320); // Default width
   const [isResizing, setIsResizing] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+  // Handle window resize for responsive layout
+  useEffect(() => {
+    const handleResize = () => {
+      const newWidth = window.innerWidth;
+      setWindowWidth(newWidth);
+
+      // Adjust sidebar width if it's too large for the window
+      const maxAllowedWidth = Math.floor(newWidth * 0.5);
+      if (sidebarWidth > maxAllowedWidth) {
+        const newSidebarWidth = Math.min(320, maxAllowedWidth);
+        setSidebarWidth(newSidebarWidth);
+
+        // Notify main process of the adjusted width
+        if (window.electronAPI) {
+          window.electronAPI.sidebarResized(newSidebarWidth);
+        }
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [sidebarWidth]);
 
   // Form handling functions
   const handleFormDataChange = (newFormData: Record<string, any>) => {
@@ -193,11 +320,6 @@ function App() {
     addDebugLog(`Form data updated: ${Object.keys(newFormData).length} fields`);
     console.log("Form data changed:", newFormData);
   };
-
-  // Debug form filling toggle
-  useEffect(() => {
-    console.log("App: Form filling state changed:", enableFormFilling);
-  }, [enableFormFilling]);
 
   const handleSaveForm = async (formDataToSave: Record<string, any>) => {
     try {
@@ -274,9 +396,18 @@ function App() {
     addDebugLog("Started resizing sidebar");
   };
 
-  const handleDoubleClick = () => {
+  const handleDoubleClick = async () => {
     setSidebarWidth(320); // Reset to default width
     addDebugLog("Sidebar width reset to default (320px)");
+
+    // Notify main process to update BrowserView bounds
+    if (window.electronAPI) {
+      try {
+        await window.electronAPI.sidebarResized(320);
+      } catch (error) {
+        console.error("Error notifying main process of sidebar reset:", error);
+      }
+    }
   };
 
   const handleMouseMove = (e: MouseEvent) => {
@@ -291,12 +422,50 @@ function App() {
 
     const constrainedWidth = Math.min(Math.max(newWidth, minWidth), maxWidth);
     setSidebarWidth(constrainedWidth);
+
+    // Notify main process in real-time (throttled to avoid performance issues)
+    if (window.electronAPI) {
+      // Use requestAnimationFrame to throttle the updates
+      if (!window.sidebarResizeFrame) {
+        window.sidebarResizeFrame = requestAnimationFrame(async () => {
+          try {
+            if (window.electronAPI) {
+              await window.electronAPI.sidebarResized(constrainedWidth);
+            }
+          } catch (error) {
+            console.error(
+              "Error notifying main process during sidebar drag:",
+              error
+            );
+          }
+          window.sidebarResizeFrame = null;
+        });
+      }
+    }
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = async () => {
     if (isResizing) {
       setIsResizing(false);
       addDebugLog(`Sidebar resized to ${sidebarWidth}px`);
+
+      // Cancel any pending animation frame
+      if (window.sidebarResizeFrame) {
+        cancelAnimationFrame(window.sidebarResizeFrame);
+        window.sidebarResizeFrame = null;
+      }
+
+      // Final update to main process with the exact final width
+      if (window.electronAPI) {
+        try {
+          await window.electronAPI.sidebarResized(sidebarWidth);
+        } catch (error) {
+          console.error(
+            "Error notifying main process of sidebar resize:",
+            error
+          );
+        }
+      }
     }
   };
 
@@ -352,6 +521,7 @@ function App() {
             const newTab: Tab = {
               id: `tab-${Date.now()}`,
               title: "New Tab",
+              contentType: "web",
               isPDF: false,
               isActive: true,
             };
@@ -611,9 +781,28 @@ function App() {
     try {
       const result = await window.electronAPI.navigateUrl(url);
       if (result.success) {
-        addDebugLog(`Browser view created: ${result.browserId}`);
+        addDebugLog(
+          `Unified content loaded: ${result.browserId} (${result.contentType})`
+        );
         setCurrentUrl(url);
         setOmniboxValue(url);
+
+        // Update active tab with web content info
+        setTabs((prev) =>
+          prev.map((tab) =>
+            tab.isActive
+              ? {
+                  ...tab,
+                  title: new URL(url).hostname,
+                  contentType: "web" as const,
+                  isPDF: false, // Legacy support
+                  url: url,
+                  browserId: result.browserId,
+                }
+              : tab
+          )
+        );
+
         await window.electronAPI.showBrowser();
       } else {
         addDebugLog(`Navigation failed: ${result.error}`);
@@ -667,14 +856,7 @@ function App() {
 
     try {
       // Check if current tab is a PDF
-      if (activeTab && activeTab.isPDF && activeTab.pdfBytes) {
-        addDebugLog(`Reloading PDF: ${activeTab.fileName || "Unknown file"}`);
-        setPdfReloading(true);
-
-        // Re-render all PDF pages in scrollable view
-        await renderPDFPagesWorking(activeTab.pdfBytes);
-        addDebugLog("PDF reloaded successfully in scrollable view");
-      } else if (isWebView) {
+      if (isWebView) {
         // Handle web page reload
         const result = await window.electronAPI.browserReload();
         if (result.success) {
@@ -709,10 +891,6 @@ function App() {
       if (result.success && result.data) {
         addDebugLog(`Opening PDF: ${result.fileName}`);
 
-        // Hide browser view for PDF mode
-        await window.electronAPI.hideBrowser();
-        setIsWebView(false);
-
         // Convert ArrayBuffer to Uint8Array and create a copy to prevent detachment
         const pdfBytes = new Uint8Array(result.data.slice(0));
 
@@ -739,44 +917,59 @@ function App() {
           );
         }
 
-        // Check if PDF appears to be corrupted (very simple check)
-        const pdfEnd = new TextDecoder().decode(pdfBytes.slice(-20));
-        addDebugLog(`PDF ending: ${pdfEnd.replace(/\n/g, "\\n")}`);
+        // Load PDF using unified content system
+        const loadResult = await window.electronAPI.loadPdfData(
+          Array.from(pdfBytes),
+          result.fileName || "document.pdf"
+        );
 
-        // Update tab with PDF data
-        setTabs((prev) => {
-          const updatedTabs = prev.map((tab) =>
-            tab.isActive
-              ? {
-                  ...tab,
-                  title: result.fileName || "PDF",
-                  isPDF: true,
-                  pdfBytes,
-                  fileName: result.fileName,
-                  filePath: result.filePath,
-                  pageNum: 1,
-                }
-              : tab
+        if (loadResult.success) {
+          addDebugLog(`PDF loaded in unified viewer: ${loadResult.browserId}`);
+
+          // Update tab with unified content data
+          setTabs((prev) => {
+            const updatedTabs = prev.map((tab) =>
+              tab.isActive
+                ? {
+                    ...tab,
+                    title: result.fileName || "PDF",
+                    contentType: "pdf" as const,
+                    isPDF: true, // Legacy support
+                    pdfBytes,
+                    fileName: result.fileName,
+                    filePath: result.filePath,
+                    pageNum: 1,
+                    browserId: loadResult.browserId,
+                  }
+                : tab
+            );
+            const updatedActiveTab = updatedTabs.find((t) => t.isActive);
+            addDebugLog(
+              `Updated tab state: contentType=${
+                updatedActiveTab?.contentType
+              }, hasPdfBytes=${!!updatedActiveTab?.pdfBytes}, title=${
+                updatedActiveTab?.title
+              }`
+            );
+            return updatedTabs;
+          });
+
+          // Switch to unified content mode (handles both web and PDF)
+          setIsWebView(true);
+
+          // Clear any cached PDF document
+          setPdfDocument(null);
+
+          // PDF loaded successfully
+          addDebugLog("PDF loaded successfully in unified viewer");
+
+          // Automatically generate summary
+          generatePdfSummary(pdfBytes);
+        } else {
+          throw new Error(
+            loadResult.error || "Failed to load PDF in unified viewer"
           );
-          const updatedActiveTab = updatedTabs.find((t) => t.isActive);
-          addDebugLog(
-            `Updated tab state: isPDF=${
-              updatedActiveTab?.isPDF
-            }, hasPdfBytes=${!!updatedActiveTab?.pdfBytes}, title=${
-              updatedActiveTab?.title
-            }`
-          );
-          return updatedTabs;
-        });
-
-        // Clear any cached PDF document
-        setPdfDocument(null);
-
-        // PDF loaded successfully - will be rendered by UnifiedPDFEditor
-        addDebugLog("PDF loaded successfully");
-
-        // Automatically generate summary
-        generatePdfSummary(pdfBytes);
+        }
       } else {
         if (!result.success) {
           addDebugLog("File dialog was canceled or failed");
@@ -2437,6 +2630,7 @@ ${textContent}`;
     const newTab: Tab = {
       id: Date.now().toString(),
       title: "New Tab",
+      contentType: "web",
       isPDF: false,
       isActive: true,
     };
@@ -2468,18 +2662,40 @@ ${textContent}`;
 
     const tab = tabs.find((t) => t.id === tabId);
     if (tab) {
-      if (tab.isPDF) {
-        // Hide browser for PDF tabs
+      // Inform main process which logical tab is active for isolation
+      try {
+        window.electronAPI?.setActiveTab(tab.id);
+      } catch {}
+
+      if (tab.isPDF || tab.contentType === "pdf") {
+        // Show Chromium BrowserView for PDF tabs
+        setIsWebView(true);
+        setCurrentUrl(tab.url || "");
         if (window.electronAPI) {
-          window.electronAPI.hideBrowser();
-        }
-        setIsWebView(false);
-        if (tab.pdfBytes) {
-          // Clear cached PDF document when switching to a different PDF
-          if (pdfDocument) {
-            setPdfDocument(null);
-          }
-          renderPDFPagesWorking(tab.pdfBytes);
+          // load pdf bytes via loadPdfData when available
+          (async () => {
+            try {
+              if (window.electronAPI) {
+                // Prefer loading from filePath for stronger tab isolation
+                if (tab.filePath) {
+                  await window.electronAPI.loadPdfFile(tab.filePath);
+                } else {
+                  const bytesForTab = tabPdfData[tab.id]
+                    ? tabPdfData[tab.id]
+                    : tab.pdfBytes
+                    ? Array.from(tab.pdfBytes)
+                    : null;
+                  if (bytesForTab) {
+                    await window.electronAPI.loadPdfData(
+                      bytesForTab,
+                      tab.fileName || "document.pdf"
+                    );
+                  }
+                }
+                await window.electronAPI.showBrowser();
+              }
+            } catch {}
+          })();
         }
       } else if (tab.url) {
         // Show browser for URL tabs
@@ -2494,7 +2710,7 @@ ${textContent}`;
   }
 
   return (
-    <div className="app">
+    <div className={`app ${darkMode ? "dark-theme" : "light-theme"}`}>
       {/* Header */}
       <div className="header">
         <div className="header-left">
@@ -2508,28 +2724,7 @@ ${textContent}`;
             <button className="nav-btn" onClick={reload} title="Reload">
               <ReloadIcon />
             </button>
-            <button
-              className="nav-btn"
-              onClick={() => setDarkMode(!darkMode)}
-              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-              {darkMode ? <SunIcon /> : <MoonIcon />}
-            </button>
-            <button
-              className="nav-btn"
-              onClick={() => setEnableFormFilling(!enableFormFilling)}
-              title={
-                enableFormFilling
-                  ? "Disable Form Filling"
-                  : "Enable Form Filling"
-              }
-              style={{
-                backgroundColor: enableFormFilling ? "#007acc" : "transparent",
-                color: enableFormFilling ? "white" : "inherit",
-              }}
-            >
-              <FileTextIcon />
-            </button>
+            {/* Theme toggle moved to Settings → Appearance */}
             <button className="nav-btn" onClick={addNewTab} title="New Tab">
               <PlusIcon />
             </button>
@@ -2608,22 +2803,22 @@ ${textContent}`;
 
       {/* Main Content */}
       <div className="main-content">
-        <div
-          className="content-area"
-          style={{ width: `calc(100% - ${sidebarWidth}px)` }}
-        >
-          {/* Browser Loading Indicator */}
-          {isWebView && browserLoading && (
-            <div className="loading-overlay">
-              <div className="loading-spinner">
-                <ReloadIcon className="spinning" />
-                <span>Loading...</span>
+        <div className="content-area">
+          {/* Browser Loading Indicator - Only show for actual web content, not PDFs */}
+          {isWebView &&
+            browserLoading &&
+            activeTab &&
+            activeTab.contentType === "web" && (
+              <div className="loading-overlay">
+                <div className="loading-spinner">
+                  <ReloadIcon className="spinning" />
+                  <span>Loading...</span>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Browser Mode Active Indicator */}
-          {isWebView && (
+          {/* Browser Mode Active Indicator - Only show for actual web content, not PDFs */}
+          {isWebView && activeTab && activeTab.contentType === "web" && (
             <div className="browser-indicator">
               <GlobeIcon />
               <span>Browser Mode Active</span>
@@ -2631,19 +2826,26 @@ ${textContent}`;
             </div>
           )}
 
-          {/* PDF Viewer */}
-          {activeTab && activeTab.isPDF && currentTabPdfBytes && (
-            <UnifiedPDFEditor
-              key={activeTab.id} // Force remount only when tab changes
-              pdfBytes={currentTabPdfBytes}
-              editMode={enableFormFilling}
-              onSave={handleUnifiedPDFSave}
-              selectedFont={selectedFont}
-              selectedFontSize={selectedFontSize}
-              onFontChange={setSelectedFont}
-              onFontSizeChange={setSelectedFontSize}
-            />
-          )}
+          {/* Unified Content Viewer (handles both PDF and web content) */}
+          <UnifiedContentViewer
+            key={activeTab.id} // Force remount when tab changes
+            isActive={
+              isWebView || (activeTab && activeTab.contentType === "pdf")
+            }
+            onFormFieldsDetected={(fields) => {
+              console.log("Form fields detected:", fields);
+              // Handle form field detection if needed
+            }}
+            onSave={(fields, pdfData) => {
+              if (pdfData) {
+                handleUnifiedPDFSave(fields, pdfData);
+              }
+            }}
+            selectedFont={selectedFont}
+            selectedFontSize={selectedFontSize}
+          />
+
+          {/* Removed legacy PDF viewer - Chromium-only rendering now */}
 
           {/* Settings Tab */}
           {activeTab && activeTab.isSettings && (
@@ -2655,6 +2857,140 @@ ${textContent}`;
                 </div>
 
                 <div className="settings-sections">
+                  {/* Appearance Section */}
+                  <div className="setting-section-tab">
+                    <h3>Appearance</h3>
+                    <div className="setting-item appearance-card">
+                      <div className="theme-choice">
+                        <button
+                          className={`theme-pill ${
+                            !darkMode &&
+                            (window as any).__themeSource !== "system"
+                              ? "active"
+                              : ""
+                          }`}
+                          onClick={async () => {
+                            setDarkMode(false);
+                            await window.electronAPI?.setTheme("light");
+                            const s = await window.electronAPI?.getSettings();
+                            const currentAppearance =
+                              s && s.success && s.data
+                                ? s.data.appearance || {}
+                                : {};
+                            (window as any).__themeSource = "light";
+                            await window.electronAPI?.updateSettings({
+                              appearance: {
+                                ...currentAppearance,
+                                themeSource: "light",
+                              },
+                            });
+                          }}
+                        >
+                          <span className="theme-icon">☀️</span> Light
+                        </button>
+                        <button
+                          className={`theme-pill ${
+                            (window as any).__themeSource === "system"
+                              ? "active"
+                              : ""
+                          }`}
+                          onClick={async () => {
+                            const info =
+                              await window.electronAPI?.getThemeInfo();
+                            const isDark = info?.success
+                              ? info.data?.shouldUseDarkColors
+                              : darkMode;
+                            setDarkMode(!!isDark);
+                            await window.electronAPI?.setTheme("system");
+                            const s = await window.electronAPI?.getSettings();
+                            const currentAppearance =
+                              s && s.success && s.data
+                                ? s.data.appearance || {}
+                                : {};
+                            (window as any).__themeSource = "system";
+                            await window.electronAPI?.updateSettings({
+                              appearance: {
+                                ...currentAppearance,
+                                themeSource: "system",
+                              },
+                            });
+                          }}
+                        >
+                          <span className="theme-icon">🖥️</span> Device
+                        </button>
+                        <button
+                          className={`theme-pill ${
+                            darkMode &&
+                            (window as any).__themeSource !== "system"
+                              ? "active"
+                              : ""
+                          }`}
+                          onClick={async () => {
+                            setDarkMode(true);
+                            await window.electronAPI?.setTheme("dark");
+                            const s = await window.electronAPI?.getSettings();
+                            const currentAppearance =
+                              s && s.success && s.data
+                                ? s.data.appearance || {}
+                                : {};
+                            (window as any).__themeSource = "dark";
+                            await window.electronAPI?.updateSettings({
+                              appearance: {
+                                ...currentAppearance,
+                                themeSource: "dark",
+                              },
+                            });
+                          }}
+                        >
+                          <span className="theme-icon">🌙</span> Dark
+                        </button>
+                      </div>
+
+                      <div className="appearance-row">
+                        <label>Accent color</label>
+                        <div className="accent-swatches">
+                          {[
+                            "#000000",
+                            "#11808d",
+                            "#b3543b",
+                            "#7d3c4a",
+                            "#c3132d",
+                            "#dc7b00",
+                            "#caa300",
+                            "#7c8351",
+                            "#0f6ea8",
+                            "#7a54a1",
+                          ].map((c) => (
+                            <button
+                              key={c}
+                              className="swatch"
+                              style={{ background: c }}
+                              onClick={async () => {
+                                document.documentElement.style.setProperty(
+                                  "--accent",
+                                  c
+                                );
+                                const s =
+                                  await window.electronAPI?.getSettings();
+                                const currentAppearance =
+                                  s && s.success && s.data
+                                    ? s.data.appearance || {}
+                                    : {};
+                                await window.electronAPI?.updateSettings({
+                                  appearance: {
+                                    ...currentAppearance,
+                                    accentColor: c,
+                                  },
+                                });
+                              }}
+                              aria-label={`Accent ${c}`}
+                            />
+                          ))}
+                          {/* Removed free-form color picker per request */}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   <div className="setting-section-tab">
                     <h3>Local AI Assistant</h3>
                     <div className="setting-item">
@@ -3201,82 +3537,89 @@ ${textContent}`;
           <div className="gemini-chat">
             <div className="chat-conversation-area">
               {/* PDF Summary as first message in chat */}
-              {activeTab && activeTab.isPDF && summaryLoading && (
-                <div className="cursor-message loading">
-                  <div className="message-header">
-                    <div className="message-meta">
-                      <span className="assistant-name">AI</span>
-                    </div>
-                  </div>
-                  <div className="message-content loading-content">
-                    <div className="typing-indicator">
-                      <div className="typing-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
-                      <span className="typing-text modern-shine">
-                        Analyzing document...
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab && activeTab.isPDF && pdfSummary && (
-                <div className="cursor-message">
-                  <div className="message-header">
-                    <div className="message-meta">
-                      <span className="assistant-name">AI</span>
-                      <div className="message-actions">
-                        <button
-                          className="action-icon"
-                          onClick={() =>
-                            activeTab &&
-                            activeTab.pdfBytes &&
-                            generatePdfSummary(activeTab.pdfBytes)
-                          }
-                          title="Regenerate"
-                        >
-                          <UpdateIcon />
-                        </button>
-                        <button
-                          className="action-icon"
-                          onClick={() => copyToClipboard(pdfSummary)}
-                          title="Copy"
-                        >
-                          <CopyIcon />
-                        </button>
+              {activeTab &&
+                (activeTab.isPDF || activeTab.contentType === "pdf") &&
+                summaryLoading && (
+                  <div className="cursor-message loading">
+                    <div className="message-header">
+                      <div className="message-meta">
+                        <span className="assistant-name">AI</span>
                       </div>
                     </div>
-                  </div>
-                  <div className="message-content cursor-markdown">
-                    <div className="pdf-summary-header">
-                      <LightningBoltIcon />
-                      <span>PDF Analysis</span>
-                      {detectedContentType && (
-                        <span className="content-type-badge">
-                          {detectedContentType
-                            .replace(/_/g, " ")
-                            .replace(/\b\w/g, (l) => l.toUpperCase())}
+                    <div className="message-content loading-content">
+                      <div className="typing-indicator">
+                        <div className="typing-dots">
+                          <span></span>
+                          <span></span>
+                          <span></span>
+                        </div>
+                        <span className="typing-text modern-shine">
+                          Analyzing document...
                         </span>
-                      )}
+                      </div>
                     </div>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeRaw]}
-                    >
-                      {pdfSummary}
-                    </ReactMarkdown>
                   </div>
-                </div>
-              )}
+                )}
 
-              {!aiReply && !aiLoading && (!activeTab || !activeTab.isPDF) && (
-                <div className="empty-chat-indicator">
-                  Type a message below to start chatting...
-                </div>
-              )}
+              {activeTab &&
+                (activeTab.isPDF || activeTab.contentType === "pdf") &&
+                pdfSummary && (
+                  <div className="cursor-message">
+                    <div className="message-header">
+                      <div className="message-meta">
+                        <span className="assistant-name">AI</span>
+                        <div className="message-actions">
+                          <button
+                            className="action-icon"
+                            onClick={() =>
+                              activeTab &&
+                              activeTab.pdfBytes &&
+                              generatePdfSummary(activeTab.pdfBytes)
+                            }
+                            title="Regenerate"
+                          >
+                            <UpdateIcon />
+                          </button>
+                          <button
+                            className="action-icon"
+                            onClick={() => copyToClipboard(pdfSummary)}
+                            title="Copy"
+                          >
+                            <CopyIcon />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="message-content cursor-markdown">
+                      <div className="pdf-summary-header">
+                        <LightningBoltIcon />
+                        <span>PDF Analysis</span>
+                        {detectedContentType && (
+                          <span className="content-type-badge">
+                            {detectedContentType
+                              .replace(/_/g, " ")
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </span>
+                        )}
+                      </div>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeRaw]}
+                      >
+                        {pdfSummary}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+
+              {!aiReply &&
+                !aiLoading &&
+                (!activeTab ||
+                  (!activeTab.isPDF && activeTab.contentType !== "pdf")) && (
+                  <div className="empty-chat-indicator">
+                    Type a message below to start chatting...
+                  </div>
+                )}
 
               {aiReply && (
                 <div className="cursor-message">

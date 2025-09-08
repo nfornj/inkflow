@@ -1,14 +1,19 @@
 // TypeScript declarations for Electron API
 
 export interface ElectronAPI {
-  // Browser navigation
-  navigateUrl: (url: string) => Promise<{ success: boolean; browserId?: string; error?: string }>;
+  // Unified content navigation (web + PDF)
+  navigateUrl: (url: string) => Promise<{ success: boolean; browserId?: string; contentType?: string; error?: string }>;
+  loadPdfFile: (filePath: string) => Promise<{ success: boolean; browserId?: string; contentType?: string; error?: string }>;
+  loadPdfData: (pdfData: ArrayBuffer | number[], fileName?: string) => Promise<{ success: boolean; browserId?: string; contentType?: string; tempFilePath?: string; error?: string }>;
+  
+  // Browser navigation controls
   browserBack: () => Promise<{ success: boolean }>;
   browserForward: () => Promise<{ success: boolean }>;
   browserReload: () => Promise<{ success: boolean }>;
   browserStop: () => Promise<{ success: boolean }>;
   hideBrowser: () => Promise<{ success: boolean }>;
   showBrowser: () => Promise<{ success: boolean }>;
+  setActiveTab: (tabId: string) => Promise<{ success: boolean }>;
 
   // File operations
   openFileDialog: () => Promise<{ success: boolean; filePath?: string; fileName?: string; data?: ArrayBuffer; error?: string }>;
@@ -29,8 +34,24 @@ export interface ElectronAPI {
 
   // Window management
   windowResized: () => Promise<{ success: boolean }>;
+  sidebarResized: (sidebarWidth: number) => Promise<{ success: boolean }>;
+  updateLayout: (layout: { topInset: number; sidebarWidth: number }) => Promise<{ success: boolean }>;
+  setTheme: (theme: 'light' | 'dark' | 'system') => Promise<{ success: boolean; error?: string }>;
+  getThemeInfo: () => Promise<{ success: boolean; data?: { themeSource: string; shouldUseDarkColors: boolean }; error?: string }>;
+  onNativeThemeUpdated: (callback: (data: { themeSource: string; shouldUseDarkColors: boolean }) => void) => void;
 
-  // Event listeners
+  // Settings API
+  getSettings: () => Promise<{ success: boolean; data?: any; error?: string }>;
+  updateSettings: (partial: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+
+  // Unified content event listeners
+  onUnifiedContentLoading: (callback: (data: { id: string; loading: boolean; contentType: string }) => void) => void;
+  onUnifiedContentLoaded: (callback: (data: { id: string; url: string; contentType: string; title: string; bounds?: { x: number; y: number; width: number; height: number } }) => void) => void;
+  onUnifiedContentError: (callback: (data: { id: string; error: string; contentType: string }) => void) => void;
+  onUnifiedContentNavigate: (callback: (data: { id: string; url: string; contentType: string }) => void) => void;
+  onPdfDetected: (callback: (data: { id: string; url: string; bounds?: { x: number; y: number; width: number; height: number }; scale?: number }) => void) => void;
+  
+  // Legacy browser event listeners (for backward compatibility)
   onBrowserLoading: (callback: (data: { loading: boolean }) => void) => void;
   onBrowserUrlChanged: (callback: (data: { url: string }) => void) => void;
   onBrowserError: (callback: (data: { error: string }) => void) => void;
@@ -181,6 +202,7 @@ export interface AutofillStatusResult {
 declare global {
   interface Window {
     electronAPI?: ElectronAPI;
+    sidebarResizeFrame?: number | null; // For throttling sidebar resize updates
     env?: {
       NODE_ENV: string;
     };

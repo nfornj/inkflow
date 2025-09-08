@@ -1,4 +1,5 @@
-const { app, BrowserWindow, BrowserView, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, dialog, Menu, nativeTheme } = require('electron');
+const Store = require('electron-store');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -18,12 +19,53 @@ const PDFFinalizer = require('./src/main/pdf-finalizer');
 let mainWindow;
 let browserView;
 let currentBrowserViewId = null;
+let currentSidebarWidth = 320; // Track current sidebar width
+let currentTopInset = 120; // Track current top inset (header + tabs + indicators)
+let currentContentType = 'web'; // Track current content type of BrowserView
+let currentContentUrl = ''; // Track current URL/file loaded in BrowserView
+let activeTabId = null; // Renderer-provided logical tab id
 let autofillEngine = null;
 let pdfProcessor = null;
 let pdfFinalizer = null;
 
+// Function to update BrowserView bounds based on current layout
+function updateBrowserViewBounds() {
+  if (!mainWindow || !browserView) return;
+  
+  const bounds = mainWindow.getBounds();
+  const headerHeight = Math.max(0, Math.floor(currentTopInset));
+  
+  browserView.setBounds({
+    x: 0,
+    y: headerHeight,
+    width: Math.max(0, bounds.width - currentSidebarWidth), // Account for sidebar
+    height: Math.max(0, bounds.height - headerHeight)
+  });
+}
+
 // Environment check
 const isDev = process.env.NODE_ENV === 'development';
+
+// Settings store (persisted)
+const settingsStore = new Store({
+  name: 'settings',
+  defaults: {
+    appearance: {
+      themeSource: 'system', // 'light' | 'dark' | 'system'
+      accentColor: '#3b82f6', // default blue
+      pageZoom: 1.0,
+      fontSize: 'medium', // 'small' | 'medium' | 'large'
+      showHomeButton: false,
+      showBookmarksBar: false,
+      showTabGroupsInBookmarksBar: false,
+      alwaysShowFullURLs: false,
+      autoPinNewTabGroups: true,
+      showMemoryOnTabHover: false,
+      highlightLinksOnTab: true,
+      confirmBeforeQuit: true
+    }
+  }
+});
 
 async function createWindow() {
   // Create the main window
@@ -102,18 +144,44 @@ async function createWindow() {
     }
   });
 
+  // Reflect OS theme changes to renderer and BrowserView
+  try {
+    nativeTheme.removeAllListeners('updated');
+    nativeTheme.on('updated', () => {
+      try {
+        if (mainWindow) {
+          mainWindow.webContents.send('native-theme-updated', {
+            themeSource: nativeTheme.themeSource,
+            shouldUseDarkColors: nativeTheme.shouldUseDarkColors
+          });
+        }
+        if (settingsStore.get('appearance.themeSource') === 'system' && browserView) {
+          try { browserView.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#fafafa'); } catch {}
+          if (currentContentType === 'pdf') {
+            try { browserView.webContents.reload(); } catch {}
+          }
+        }
+      } catch {}
+    });
+  } catch {}
+
   // Handle window closed
   mainWindow.on('closed', () => {
-    mainWindow = null;
     if (browserView) {
       mainWindow.removeBrowserView(browserView);
       browserView = null;
     }
+    mainWindow = null;
+  });
+
+  // Handle window resize - update BrowserView bounds
+  mainWindow.on('resize', () => {
+    updateBrowserViewBounds();
   });
 }
 
-// Create embedded browser view for restricted sites
-function createBrowserView(url) {
+// Create unified browser view for both web content and PDFs
+function createUnifiedView(contentUrl, contentType = 'auto') {
   // Check if main window exists
   if (!mainWindow) {
     throw new Error('Main window not available');
@@ -129,30 +197,31 @@ function createBrowserView(url) {
     browserView = null;
   }
 
-  // Create new browser view
+  // Create new unified browser view with enhanced PDF support
   browserView = new BrowserView({
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false, // Disable for bypassing restrictions
       allowRunningInsecureContent: true,
-      experimentalFeatures: true
+      experimentalFeatures: true,
+      plugins: true, // Enable PDF plugin
+      enableBlinkFeatures: 'PDFViewerUpdate', // Enable latest PDF features
+      additionalArguments: [
+        '--enable-pdf-tagging', // Better PDF accessibility
+        '--enable-print-preview', // PDF print support
+        '--disable-features=VizDisplayCompositor' // Better PDF rendering
+      ]
     }
   });
 
   // Add to main window
   mainWindow.setBrowserView(browserView);
   
-  // Position the browser view (below header, above footer)
-  const bounds = mainWindow.getBounds();
-  browserView.setBounds({
-    x: 0,
-    y: 120, // Below header and tabs (48px header + 36px tabs + 36px browser indicator)
-    width: bounds.width - 320, // Leave space for AI sidebar (320px)
-    height: bounds.height - 120 // Leave space for header and tabs
-  });
+  // Position the browser view (full content area)
+  updateBrowserViewBounds();
 
-  // Disable web security for this view to bypass iframe restrictions
+  // Enhanced header removal for both web and PDF content
   browserView.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     // Remove headers that prevent embedding
     delete details.responseHeaders['x-frame-options'];
@@ -160,37 +229,106 @@ function createBrowserView(url) {
     delete details.responseHeaders['content-security-policy'];
     delete details.responseHeaders['Content-Security-Policy'];
     
+    // Enhanced PDF handling headers
+    if (details.url.includes('.pdf') || contentType === 'pdf') {
+      details.responseHeaders['content-type'] = ['application/pdf'];
+      details.responseHeaders['content-disposition'] = ['inline'];
+    }
+    
     callback({ responseHeaders: details.responseHeaders });
   });
 
-  // Load the URL
-  browserView.webContents.loadURL(url);
+  // Load the content (URL or PDF file path)
+  if (contentType === 'pdf' || contentUrl.endsWith('.pdf')) {
+    // For PDF files, load directly - Chromium will use native PDF viewer
+    console.log(`🚀 Loading PDF in unified Chromium viewer: ${contentUrl}`);
+    browserView.webContents.loadFile(contentUrl);
+    // Ensure background matches theme
+    try { browserView.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#fafafa'); } catch {}
+    currentContentType = 'pdf';
+    currentContentUrl = contentUrl;
+  } else {
+    // For web URLs, load normally
+    console.log(`🌐 Loading web content in unified Chromium viewer: ${contentUrl}`);
+    browserView.webContents.loadURL(contentUrl);
+    try { browserView.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#fafafa'); } catch {}
+    currentContentType = 'web';
+    currentContentUrl = contentUrl;
+  }
   
   // Generate unique ID for this browser view
   currentBrowserViewId = Date.now().toString();
   
-  // Send navigation events to renderer
+  // Enhanced event handling for both web and PDF content
   browserView.webContents.on('did-start-loading', () => {
-    mainWindow.webContents.send('browser-loading', { id: currentBrowserViewId, loading: true });
-  });
-
-  browserView.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.send('browser-loading', { id: currentBrowserViewId, loading: false });
-    mainWindow.webContents.send('browser-url-changed', { 
+    mainWindow.webContents.send('unified-content-loading', { 
       id: currentBrowserViewId, 
-      url: browserView.webContents.getURL() 
+      loading: true,
+      contentType: contentType
     });
   });
 
-  browserView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    mainWindow.webContents.send('browser-error', { 
+  browserView.webContents.on('did-finish-load', () => {
+    const currentUrl = browserView.webContents.getURL();
+    const isPdf = currentUrl.includes('.pdf') || contentType === 'pdf';
+    currentContentType = isPdf ? 'pdf' : 'web';
+    currentContentUrl = currentUrl;
+    
+    mainWindow.webContents.send('unified-content-loading', { 
       id: currentBrowserViewId, 
-      error: errorDescription 
+      loading: false,
+      contentType: isPdf ? 'pdf' : 'web'
+    });
+    
+    mainWindow.webContents.send('unified-content-loaded', { 
+      id: currentBrowserViewId, 
+      url: currentUrl,
+      contentType: isPdf ? 'pdf' : 'web',
+      title: browserView.webContents.getTitle(),
+      bounds: browserView.getBounds() // Include BrowserView bounds for alignment
+    });
+
+    // If it's a PDF, enable form detection overlay with positioning info
+    if (isPdf) {
+      console.log('📝 PDF detected - enabling form overlay system');
+      mainWindow.webContents.send('pdf-detected', { 
+        id: currentBrowserViewId,
+        url: currentUrl,
+        bounds: browserView.getBounds(), // BrowserView position and size
+        scale: 1.0 // Default scale, can be updated later
+      });
+    }
+  });
+
+  browserView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    mainWindow.webContents.send('unified-content-error', { 
+      id: currentBrowserViewId, 
+      error: errorDescription,
+      contentType: contentType
+    });
+  });
+
+  // Handle navigation within the browser view
+  browserView.webContents.on('will-navigate', (event, url) => {
+    const isPdf = url.includes('.pdf');
+    mainWindow.webContents.send('unified-content-navigate', {
+      id: currentBrowserViewId,
+      url: url,
+      contentType: isPdf ? 'pdf' : 'web'
     });
   });
 
   return currentBrowserViewId;
 }
+// Associate current BrowserView content with a logical tab id
+ipcMain.handle('set-active-tab', async (event, tabId) => {
+  try {
+    activeTabId = tabId;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
 
 // Hide browser view (for PDF mode)
 function hideBrowserView() {
@@ -212,9 +350,9 @@ function showBrowserView() {
       const bounds = mainWindow.getBounds();
       browserView.setBounds({
         x: 0,
-        y: 120, // Below header and tabs (48px header + 36px tabs + 36px browser indicator)
-        width: bounds.width - 320, // Leave space for AI sidebar (320px)
-        height: bounds.height - 120 // Leave space for header and tabs
+        y: Math.max(0, Math.floor(currentTopInset)),
+        width: Math.max(0, bounds.width - currentSidebarWidth),
+        height: Math.max(0, bounds.height - Math.floor(currentTopInset))
       });
     } catch (error) {
       console.error('Error showing browser view:', error);
@@ -225,8 +363,34 @@ function showBrowserView() {
 // IPC Handlers
 ipcMain.handle('navigate-url', async (event, url) => {
   try {
-    const browserId = createBrowserView(url);
-    return { success: true, browserId };
+    const browserId = createUnifiedView(url, 'web');
+    return { success: true, browserId, contentType: 'web' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('load-pdf-file', async (event, filePath) => {
+  try {
+    const browserId = createUnifiedView(filePath, 'pdf');
+    return { success: true, browserId, contentType: 'pdf' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('load-pdf-data', async (event, pdfData, fileName = 'document.pdf') => {
+  try {
+    // Save PDF data to temp file for Chromium to load
+    const tempDir = require('os').tmpdir();
+    const tempFilePath = require('path').join(tempDir, `inkflow_${Date.now()}_${fileName}`);
+    
+    // Convert array back to Buffer if needed
+    const buffer = Buffer.isBuffer(pdfData) ? pdfData : Buffer.from(pdfData);
+    require('fs').writeFileSync(tempFilePath, buffer);
+    
+    const browserId = createUnifiedView(tempFilePath, 'pdf');
+    return { success: true, browserId, contentType: 'pdf', tempFilePath };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -991,9 +1155,9 @@ ipcMain.handle('window-resized', async () => {
     const bounds = mainWindow.getBounds();
     browserView.setBounds({
       x: 0,
-      y: 120, // Below header and tabs (48px header + 36px tabs + 36px browser indicator)
-      width: bounds.width - 320, // Leave space for AI sidebar (320px)
-      height: bounds.height - 120 // Leave space for header and tabs
+      y: Math.max(0, Math.floor(currentTopInset)),
+      width: Math.max(0, bounds.width - currentSidebarWidth),
+      height: Math.max(0, bounds.height - Math.floor(currentTopInset))
     });
   }
 });
@@ -1618,3 +1782,126 @@ app.on('web-contents-created', (event, contents) => {
   });
 });
 
+// IPC Handlers
+
+// Handle sidebar resize - update BrowserView bounds
+ipcMain.handle('sidebar-resized', async (event, sidebarWidth) => {
+  try {
+    currentSidebarWidth = sidebarWidth;
+    updateBrowserViewBounds();
+    return { success: true };
+  } catch (error) {
+    console.error('Error handling sidebar resize:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Receive layout metrics (top inset and sidebar width) from renderer for pixel-perfect alignment
+ipcMain.handle('update-layout', async (event, layout) => {
+  try {
+    if (typeof layout?.topInset === 'number') {
+      currentTopInset = layout.topInset;
+    }
+    if (typeof layout?.sidebarWidth === 'number') {
+      currentSidebarWidth = layout.sidebarWidth;
+    }
+    updateBrowserViewBounds();
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating layout metrics:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Settings IPC
+ipcMain.handle('get-settings', async () => {
+  try {
+    return { success: true, data: settingsStore.store };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('update-settings', async (event, partial) => {
+  try {
+    const merged = { ...settingsStore.store, ...partial };
+    settingsStore.store = merged;
+    // Apply appearance changes immediately
+    const appearance = merged.appearance || {};
+    if (appearance.themeSource) {
+      nativeTheme.themeSource = appearance.themeSource;
+      if (browserView && typeof browserView.setBackgroundColor === 'function') {
+        browserView.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#fafafa');
+      }
+      if (currentContentType === 'pdf') {
+        try { browserView.webContents.reload(); } catch {}
+      }
+    }
+    return { success: true, data: merged };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Allow renderer to control Chromium's theme (affects built-in PDF viewer)
+ipcMain.handle('set-theme', async (event, theme) => {
+  try {
+    if (['light', 'dark', 'system'].includes(theme)) {
+      nativeTheme.themeSource = theme;
+      // Persist appearance setting
+      try {
+        const current = settingsStore.get('appearance');
+        settingsStore.set('appearance', { ...current, themeSource: theme });
+      } catch {}
+      if (browserView) {
+        try {
+          const targetBg = nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#fafafa';
+          const hasBVMethod = typeof browserView.setBackgroundColor === 'function';
+          const hasWCColorScheme = typeof browserView.webContents.setColorScheme === 'function';
+          const hasWCCSS = typeof browserView.webContents.insertCSS === 'function';
+          console.log('Theme toggle capabilities:', { hasBVMethod, hasWCColorScheme, hasWCCSS, targetBg });
+          if (hasBVMethod) {
+            browserView.setBackgroundColor(targetBg);
+          }
+          if (hasWCColorScheme) {
+            browserView.webContents.setColorScheme(nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
+          }
+          if (hasWCCSS) {
+            const css = nativeTheme.shouldUseDarkColors
+              ? ':root{color-scheme:dark;background:#1e1e1e !important;} body{background:#1e1e1e !important;}'
+              : ':root{color-scheme:light;background:#fafafa !important;} body{background:#fafafa !important;}';
+            try { await browserView.webContents.insertCSS(css); } catch {}
+          }
+        } catch (err) {
+          console.log('Fallback theme application failed:', err?.message);
+        }
+        // For Chromium's built-in PDF viewer, apply theme change by reloading
+        if (currentContentType === 'pdf') {
+          try {
+            browserView.webContents.reload();
+          } catch {}
+        }
+      }
+      return { success: true };
+    }
+    return { success: false, error: 'Invalid theme' };
+  } catch (error) {
+    console.error('Error setting theme:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get theme info (for Device/system theme and diagnostics)
+ipcMain.handle('get-theme-info', async () => {
+  try {
+    return {
+      success: true,
+      data: {
+        themeSource: nativeTheme.themeSource,
+        shouldUseDarkColors: nativeTheme.shouldUseDarkColors
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
