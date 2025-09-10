@@ -14,6 +14,7 @@ type Props = {
   loading?: boolean;
   active?: boolean;
   onTodoClick: () => void;
+  todoItems?: TodoItem[];
 };
 
 export default function ChatActionChips({
@@ -22,6 +23,7 @@ export default function ChatActionChips({
   loading = false,
   active = false,
   onTodoClick,
+  todoItems = [],
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -36,15 +38,8 @@ export default function ChatActionChips({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  // Dummy data to mimic the screenshot
-  const dummy: TodoItem[] = [
-    { id: "1", title: "First Name", category: "Personal" },
-    { id: "2", title: "Last Name", category: "Personal" },
-    { id: "3", title: "Email Address", category: "Contact" },
-    { id: "4", title: "Phone Number", category: "Contact" },
-    { id: "5", title: "Current Employer", category: "Employment" },
-    { id: "6", title: "Years of Experience", category: "Employment" },
-  ];
+  // Use real todo items from OCR results
+  const displayItems = todoItems.length > 0 ? todoItems : [];
 
   return (
     <div
@@ -54,51 +49,74 @@ export default function ChatActionChips({
       ref={rootRef}
     >
       <button
-        className={`chip ${open || active ? "active" : ""}`}
+        className={`chip ${open ? "sliding" : ""} ${active ? "active" : ""}`}
         disabled={!todoEnabled}
         onClick={() => {
           onTodoClick?.();
           if (todoEnabled) setOpen((v) => !v);
         }}
-        title={todoEnabled ? "Show Agent options" : "Agent not available"}
+        title={todoEnabled ? "Show Agent Tasks" : "Agent Tasks not available"}
       >
         <div className="chip-left">
           <span className="infinity-symbol">∞</span>
-          <span className="chip-label">Agent</span>
-          <span className="shortcut">⌘I</span>
-          <span className="caret">^</span>
+          <span className="chip-label">Agent Tasks</span>
         </div>
         <div className="chip-right">
-          <button className="action-link">Undo All</button>
-          <span className="separator">⌘⌫</span>
-          <button className="action-link selected">Keep All</button>
-          <span className="separator">⌘⏎</span>
+          <span className="action-link selected">
+            <span className="play-icon">▶</span>
+            Run All
+          </span>
         </div>
       </button>
       {open && (
-        <div className="chip-popover" role="dialog" aria-label="Agent options">
-          <div className="popover-header">
-            <div className="header-left">
-              <span className="collapse-icon">▼</span>
-              <span className="item-count">{dummy.length} Fields</span>
+        <div className="chip-popover" role="dialog" aria-label="Agent Tasks">
+          <button
+            className="popover-header"
+            onClick={() => setOpen(false)}
+            title="Hide Agent Tasks"
+          >
+            <div className="chip-left">
+              <span className="infinity-symbol">∞</span>
+              <span className="chip-label">Agent Tasks</span>
             </div>
-            <div className="header-right">
-              <button className="action-link">Undo All</button>
-              <span className="separator">⌘⌫</span>
-              <button className="action-link selected">Keep All</button>
-              <span className="separator">⌘⏎</span>
+            <div className="chip-right">
+              <span className="action-link selected">
+                <span className="play-icon">▶</span>
+                Run All
+              </span>
             </div>
-          </div>
+          </button>
           <div className="popover-body">
-            {dummy.map((d, index) => (
-              <div key={d.id} className="todo-item">
-                <div className="item-icon">📝</div>
-                <div className="item-content">
-                  <span className="item-title">{d.title}</span>
-                  <span className="item-badge">+{index + 1}</span>
+            {displayItems.length === 0 ? (
+              <div className="no-todos">
+                <div className="no-todos-icon">📋</div>
+                <div className="no-todos-text">No form fields detected</div>
+                <div className="no-todos-subtext">
+                  Load a PDF to see form fields
                 </div>
               </div>
-            ))}
+            ) : (
+              displayItems.map((item, index) => (
+                <div key={item.id} className="todo-item">
+                  <label className="todo-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={item.done || false}
+                      onChange={() => {
+                        // Handle checkbox change - you can add this functionality later
+                        console.log(`Toggled ${item.title}`);
+                      }}
+                    />
+                    <span className="checkbox-custom"></span>
+                  </label>
+                  <div className="item-content">
+                    <span className="item-title">{item.title}</span>
+                    <span className="item-category">{item.category}</span>
+                  </div>
+                  <div className="item-icon">📝</div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

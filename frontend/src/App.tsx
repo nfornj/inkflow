@@ -192,10 +192,35 @@ function App() {
   // PDF Form Processor
   const formProcessor = usePDFFormProcessor();
 
+  // Add error boundary for debugging
+  useEffect(() => {
+    const handleError = (error: ErrorEvent) => {
+      console.error("🚨 Uncaught Error:", error.message);
+      console.error("🚨 Error at:", error.filename, ":", error.lineno);
+      addDebugLog(`🚨 Uncaught Error: ${error.message}`);
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error("🚨 Unhandled Promise Rejection:", event.reason);
+      addDebugLog(`🚨 Unhandled Promise Rejection: ${event.reason}`);
+    };
+
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener(
+        "unhandledrejection",
+        handleUnhandledRejection
+      );
+    };
+  }, [addDebugLog]);
+
   // Additional state for form processing UI
   const [showFormTodos, setShowFormTodos] = useState(false);
   const [formProcessingEnabled, setFormProcessingEnabled] = useState(true);
-  const [ocrEnabled, setOcrEnabled] = useState(false); // Disabled by default to avoid runtime errors
+  const [ocrEnabled, setOcrEnabled] = useState(true); // Enabled for testing
 
   // Enable debug mode with Ctrl+D
   useEffect(() => {
@@ -991,33 +1016,77 @@ function App() {
           generatePdfSummary(pdfBytes);
 
           // Process PDF for form fields if feature is enabled and OCR is enabled
+          console.log("=== PDF LOADED - FORM PROCESSOR DEBUG ===");
+          console.log("Form processor state:", {
+            isReady: formProcessor.isReady,
+            isProcessing: formProcessor.isProcessing,
+            isInitialized: formProcessor.isInitialized,
+            hasResults: formProcessor.hasResults,
+          });
+          console.log("Feature flags:", {
+            formProcessingEnabled,
+            ocrEnabled,
+          });
+          console.log("PDF bytes size:", pdfBytes.length);
+          console.log("Todo result exists:", !!formProcessor.todoResult);
+
+          addDebugLog(
+            `Form processor state: ready=${formProcessor.isReady}, processing=${formProcessor.isProcessing}, initialized=${formProcessor.isInitialized}`
+          );
+          addDebugLog(
+            `Feature flags: formProcessingEnabled=${formProcessingEnabled}, ocrEnabled=${ocrEnabled}`
+          );
+          addDebugLog(`PDF bytes size: ${pdfBytes.length}`);
+          addDebugLog(`Todo result exists: ${!!formProcessor.todoResult}`);
+          addDebugLog(
+            `Todo result success: ${formProcessor.todoResult?.success}`
+          );
+          addDebugLog(
+            `Todo result total items: ${
+              formProcessor.todoResult?.totalItems || 0
+            }`
+          );
+
           if (formProcessingEnabled && formProcessor.isReady && ocrEnabled) {
             addDebugLog("Starting PDF form field analysis...");
             setShowFormTodos(true);
-            formProcessor
-              .processPDF(pdfBytes)
-              .then((success) => {
-                if (success) {
-                  addDebugLog(
-                    `Form analysis completed: ${
-                      formProcessor.todoResult?.totalItems || 0
-                    } fields found`
-                  );
-                } else {
-                  addDebugLog(
-                    `Form analysis failed: ${
-                      formProcessor.error || "Unknown error"
-                    }`
-                  );
-                  // Don't show the todos section if analysis failed
+
+            try {
+              formProcessor
+                .processPDF(pdfBytes)
+                .then((success) => {
+                  if (success) {
+                    addDebugLog(
+                      `Form analysis completed: ${
+                        formProcessor.todoResult?.totalItems || 0
+                      } fields found`
+                    );
+                  } else {
+                    addDebugLog(
+                      `Form analysis failed: ${
+                        formProcessor.error || "Unknown error"
+                      }`
+                    );
+                    // Don't show the todos section if analysis failed
+                    setShowFormTodos(false);
+                  }
+                })
+                .catch((error) => {
+                  addDebugLog(`Form analysis error: ${error.message || error}`);
                   setShowFormTodos(false);
-                }
-              })
-              .catch((error) => {
-                addDebugLog(`Form analysis error: ${error.message || error}`);
-                setShowFormTodos(false);
-                console.error("PDF form processing error:", error);
-              });
+                  console.error("PDF form processing error:", error);
+                });
+            } catch (error) {
+              addDebugLog(
+                `Form analysis setup error: ${
+                  error instanceof Error ? error.message : "Unknown error"
+                }`
+              );
+              setShowFormTodos(false);
+              console.error("PDF form processing setup error:", error);
+            }
+          } else {
+            addDebugLog("Skipping form analysis - conditions not met");
           }
         } else {
           throw new Error(
@@ -3788,11 +3857,22 @@ ${textContent}`;
             <div className="gemini-input-container">
               {/* Action chips positioned directly above the input (dummy data) */}
               <ChatActionChips
-                todoEnabled={true}
-                pendingCount={6}
-                loading={false}
-                active={false}
+                todoEnabled={formProcessor.isReady}
+                pendingCount={formProcessor.todoResult?.totalItems || 0}
+                loading={formProcessor.isProcessing}
+                active={showFormTodos}
                 onTodoClick={() => setShowFormTodos((v) => !v)}
+                todoItems={
+                  formProcessor.todoResult?.categories?.flatMap(
+                    (cat) =>
+                      cat.items?.map((item) => ({
+                        id: item.id || `item-${Math.random()}`,
+                        title: item.title || "Unknown Field",
+                        category: cat.name || "Other",
+                        done: item.status === "completed",
+                      })) || []
+                  ) || []
+                }
               />
               <div className="gemini-input">
                 <textarea
@@ -3904,6 +3984,36 @@ ${textContent}`;
             </div>
             {debugExpanded && (
               <div className="footer-debug-content">
+                <div className="debug-controls">
+                  <button
+                    className="debug-button"
+                    onClick={async () => {
+                      if (activeTab?.pdfBytes) {
+                        addDebugLog("Starting OCR test...");
+                        await formProcessor.testOCR(activeTab.pdfBytes);
+                        addDebugLog(
+                          "OCR test completed - check console for detailed results"
+                        );
+                      } else {
+                        addDebugLog(
+                          "No PDF loaded - please open a PDF file first"
+                        );
+                      }
+                    }}
+                    disabled={!activeTab?.pdfBytes}
+                  >
+                    🔍 Test OCR
+                  </button>
+                  <button
+                    className="debug-button"
+                    onClick={() => {
+                      setDebugLog([]);
+                      addDebugLog("Debug log cleared");
+                    }}
+                  >
+                    🗑️ Clear Logs
+                  </button>
+                </div>
                 {debugLog.length === 0 ? (
                   <div className="debug-empty">No debug messages</div>
                 ) : (

@@ -37,14 +37,26 @@ export class PDFTextExtractor {
     if (this.isInitialized) return;
 
     try {
+      console.log('Initializing Tesseract.js worker...');
+      
       // Create Tesseract worker
       this.worker = await createWorker('eng', 1, {
         logger: (m) => {
-          if (m.status === 'recognizing text') {
-            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
-          }
+          console.log(`Tesseract: ${m.status} - ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
         },
       });
+      
+      console.log('Tesseract worker created successfully');
+
+      // Test the worker with a simple image
+      try {
+        console.log('Testing Tesseract worker...');
+        const testResult = await this.worker.recognize('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+        console.log('Tesseract worker test successful:', testResult.data.text);
+      } catch (testError) {
+        console.error('Tesseract worker test failed:', testError);
+        throw new Error(`Tesseract worker test failed: ${testError instanceof Error ? testError.message : 'Unknown error'}`);
+      }
 
       // Configure Tesseract for better form field detection
       try {
@@ -121,7 +133,24 @@ export class PDFTextExtractor {
       }
 
       const processingTime = Date.now() - startTime;
-      console.log(`OCR processing completed in ${processingTime}ms`);
+      console.log(`\n=== OVERALL OCR PROCESSING SUMMARY ===`);
+      console.log(`Total pages processed: ${totalPages}`);
+      console.log(`Total processing time: ${processingTime}ms`);
+      console.log(`Average time per page: ${Math.round(processingTime / totalPages)}ms`);
+      
+      // Calculate total statistics
+      const totalWords = pages.reduce((sum, page) => sum + page.textRegions.length, 0);
+      const totalText = pages.map(page => page.fullText).join(' ').trim();
+      const avgConfidence = pages.reduce((sum, page) => {
+        const pageConfidence = page.textRegions.reduce((pageSum, region) => pageSum + region.confidence, 0);
+        return sum + (page.textRegions.length > 0 ? pageConfidence / page.textRegions.length : 0);
+      }, 0) / totalPages;
+      
+      console.log(`Total words extracted: ${totalWords}`);
+      console.log(`Average confidence: ${avgConfidence.toFixed(2)}%`);
+      console.log(`Total extracted text length: ${totalText.length} characters`);
+      console.log(`Full extracted text: "${totalText}"`);
+      console.log(`=== END OCR PROCESSING SUMMARY ===\n`);
 
       return {
         pages,
@@ -170,7 +199,19 @@ export class PDFTextExtractor {
     const imageData = canvas.toDataURL('image/png');
 
     // Perform OCR
-    const { data } = await this.worker.recognize(imageData);
+    console.log(`Starting OCR recognition for page ${pageNum}...`);
+    console.log(`Canvas dimensions: ${canvas.width}x${canvas.height}`);
+    console.log(`Image data length: ${imageData.length} characters`);
+    
+    let data;
+    try {
+      const result = await this.worker.recognize(imageData);
+      data = result.data;
+      console.log(`OCR recognition completed for page ${pageNum}`);
+    } catch (ocrError) {
+      console.error(`OCR recognition failed for page ${pageNum}:`, ocrError);
+      throw new Error(`OCR recognition failed: ${ocrError instanceof Error ? ocrError.message : 'Unknown error'}`);
+    }
 
     // Process OCR results
     const textRegions: TextRegion[] = [];
@@ -179,8 +220,30 @@ export class PDFTextExtractor {
     const ocrData = data as any;
     const words = ocrData.words || [];
 
+    console.log(`\n=== OCR EXTRACTION RESULTS FOR PAGE ${pageNum} ===`);
+    console.log(`Total words detected: ${words.length}`);
+    console.log(`Full text extracted: "${data.text || ''}"`);
+    console.log(`Text confidence: ${data.confidence || 'N/A'}`);
+    
+    // Log all words with their details
+    console.log('\n--- Individual Word Details ---');
+    words.forEach((word: any, index: number) => {
+      console.log(`Word ${index + 1}:`, {
+        text: `"${word.text || ''}"`,
+        confidence: word.confidence || 0,
+        bbox: word.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 },
+        block_num: word.block_num || 'N/A',
+        par_num: word.par_num || 'N/A',
+        line_num: word.line_num || 'N/A',
+        word_num: word.word_num || 'N/A'
+      });
+    });
+
+    // Filter and process high-confidence words
+    let highConfidenceCount = 0;
     for (const word of words) {
       if (word.text?.trim() && word.confidence > 30) { // Filter low-confidence words
+        highConfidenceCount++;
         textRegions.push({
           text: word.text,
           bbox: {
@@ -194,6 +257,23 @@ export class PDFTextExtractor {
         });
       }
     }
+
+    console.log(`\n--- Filtered Results ---`);
+    console.log(`High-confidence words (>30%): ${highConfidenceCount}`);
+    console.log(`Text regions created: ${textRegions.length}`);
+    
+    // Log the final text regions
+    console.log('\n--- Final Text Regions ---');
+    textRegions.forEach((region, index) => {
+      console.log(`Region ${index + 1}:`, {
+        text: `"${region.text}"`,
+        confidence: region.confidence,
+        bbox: region.bbox,
+        page: region.page
+      });
+    });
+    
+    console.log(`=== END OCR RESULTS FOR PAGE ${pageNum} ===\n`);
 
     return {
       pageNumber: pageNum,

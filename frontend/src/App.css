@@ -3119,6 +3119,35 @@ body, html, #root {
   background: #1a1a1a;
 }
 
+.debug-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.debug-button {
+  padding: 6px 12px;
+  background: #333333;
+  border: 1px solid #555555;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.debug-button:hover:not(:disabled) {
+  background: #444444;
+  border-color: #666666;
+}
+
+.debug-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .debug-entry {
   padding: 4px 0;
   border-bottom: 1px solid #2a2a2a;

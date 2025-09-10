@@ -27,6 +27,7 @@ export interface PDFFormProcessorActions {
   updateTodoStatus: (todoId: string, status: TodoItem['status']) => void;
   clearResults: () => void;
   retryProcessing: () => void;
+  testOCR: (pdfBytes: Uint8Array) => Promise<void>;
 }
 
 export interface PDFFormProcessorReturn extends PDFFormProcessorState, PDFFormProcessorActions {
@@ -131,16 +132,7 @@ export const usePDFFormProcessor = (): PDFFormProcessorReturn => {
           throw new Error(`Text extraction failed: ${extractionResult.error}`);
         }
       } catch (ocrError) {
-        console.warn('OCR extraction failed, creating empty result:', ocrError);
-        
-        // Create a fallback empty result so the app doesn't crash
-        extractionResult = {
-          pages: [],
-          totalPages: 0,
-          processingTime: 0,
-          success: false,
-          error: ocrError instanceof Error ? ocrError.message : 'OCR failed'
-        };
+        console.error('OCR extraction failed:', ocrError);
         
         // Re-throw to be handled by outer catch
         throw new Error(`OCR processing failed: ${ocrError instanceof Error ? ocrError.message : 'Unknown error'}`);
@@ -152,6 +144,7 @@ export const usePDFFormProcessor = (): PDFFormProcessorReturn => {
       // Step 2: Detect form fields
       updateProgress('detecting');
       console.log('Step 2: Detecting form fields...');
+      console.log(`Pages to process: ${extractionResult.pages.length}`);
       
       const detectionResult = formFieldDetector.detectFormFields(extractionResult.pages);
       
@@ -165,8 +158,10 @@ export const usePDFFormProcessor = (): PDFFormProcessorReturn => {
       // Step 3: Generate todo list
       updateProgress('generating');
       console.log('Step 3: Generating todo list...');
+      console.log(`Fields to process: ${detectionResult.fields?.length || 0}`);
       
       const todoResult = todoGenerator.generateTodoList(detectionResult);
+      console.log(`Todo generation result: success=${todoResult.success}, categories=${todoResult.categories?.length || 0}, totalItems=${todoResult.totalItems || 0}`);
       
       if (!todoResult.success) {
         throw new Error(`Todo generation failed: ${todoResult.error}`);
@@ -269,6 +264,44 @@ export const usePDFFormProcessor = (): PDFFormProcessorReturn => {
     }
   }, [currentPdfBytes, processPDF]);
 
+  const testOCR = useCallback(async (pdfBytes: Uint8Array): Promise<void> => {
+    console.log('\n🔍 === STARTING OCR TEST ===');
+    console.log('PDF file size:', pdfBytes.length, 'bytes');
+    
+    try {
+      const extractor = await getPDFTextExtractor();
+      const result = await extractor.extractTextFromPDF(pdfBytes);
+      
+      console.log('\n✅ OCR TEST COMPLETED SUCCESSFULLY');
+      console.log('Test results:', {
+        success: result.success,
+        totalPages: result.totalPages,
+        processingTime: result.processingTime,
+        error: result.error
+      });
+      
+      if (result.success) {
+        console.log('\n📊 DETAILED OCR ANALYSIS:');
+        result.pages.forEach((page, index) => {
+          console.log(`\n--- PAGE ${page.pageNumber} ---`);
+          console.log(`Dimensions: ${page.width}x${page.height}`);
+          console.log(`Text regions: ${page.textRegions.length}`);
+          console.log(`Full text: "${page.fullText}"`);
+          console.log(`Text regions:`, page.textRegions.map(r => ({
+            text: r.text,
+            confidence: r.confidence,
+            bbox: r.bbox
+          })));
+        });
+      }
+      
+    } catch (error) {
+      console.error('\n❌ OCR TEST FAILED:', error);
+    }
+    
+    console.log('🔍 === END OCR TEST ===\n');
+  }, []);
+
   // Convenience getters
   const hasResults = Boolean(state.todoResult && state.todoResult.success);
   const isReady = state.isInitialized && !state.isProcessing;
@@ -282,6 +315,7 @@ export const usePDFFormProcessor = (): PDFFormProcessorReturn => {
     updateTodoStatus,
     clearResults,
     retryProcessing,
+    testOCR,
     
     // Convenience
     hasResults,
