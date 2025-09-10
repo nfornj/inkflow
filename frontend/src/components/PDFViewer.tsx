@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Viewer, Worker } from "@react-pdf-viewer/core";
+import { Viewer } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { toolbarPlugin } from "@react-pdf-viewer/toolbar";
 import EnhancedFormOverlay from "./EnhancedFormOverlay";
@@ -108,22 +108,21 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         </div>
       ) : (
         <>
-          <Worker workerUrl="/pdf.worker.min.js">
+          <div
+            className={darkMode ? "rpv-core__viewer--dark-theme" : ""}
+            style={{
+              height: "100%",
+              width: "100%",
+            }}
+          >
             <div
-              className={darkMode ? "rpv-core__viewer--dark-theme" : ""}
-              style={{
-                height: "100%",
-                width: "100%",
-              }}
+              style={{ padding: "20px", textAlign: "center", color: "#666" }}
             >
-              <Viewer
-                fileUrl={pdfData}
-                plugins={[defaultLayoutPluginInstance, toolbarPluginInstance]}
-                onDocumentLoad={handleDocumentLoad}
-                onPageChange={handlePageChange}
-              />
+              PDF Viewer temporarily disabled to prevent worker loading issues.
+              <br />
+              Please use the unified PDF viewer instead.
             </div>
-          </Worker>
+          </div>
 
           {/* Form overlay for interactive form filling */}
           {enableFormFilling && (

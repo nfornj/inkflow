@@ -1,17 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
-import "pdfjs-dist/build/pdf.worker.entry";
+// Removed worker entry import to prevent automatic worker setup
 import { detectWidgetsPdfJs, DetectedField } from "./detect/detectWidgetsPdfJs";
 import EditorToolbar from "../components/EditorToolbar";
 
-try {
-  // Use CDN worker to avoid blank canvas if bundler path fails
-  (
-    pdfjsLib as any
-  ).GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${
-    (pdfjsLib as any).version
-  }/pdf.worker.min.js`;
-} catch {}
+// PDF.js worker is configured in App.tsx to handle Electron vs web environments
+// No need to configure here as it's handled globally
 
 export default function NewPdfEditor({ pdfBytes }: { pdfBytes: Uint8Array }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -34,7 +28,7 @@ export default function NewPdfEditor({ pdfBytes }: { pdfBytes: Uint8Array }) {
       const bytesCopy = new Uint8Array(pdfBytes);
       const loadingTask = (pdfjsLib as any).getDocument({
         data: bytesCopy,
-        disableWorker: false,
+        disableWorker: true,
       });
       const d = await loadingTask.promise;
       setDoc(d);

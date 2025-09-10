@@ -1,0 +1,129 @@
+/* Form Processing Components */
+.form-todos-section {
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.processing-status {
+  background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.status-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-icon {
+  font-size: 24px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-text {
+  flex: 1;
+}
+
+.status-text h4 {
+  margin: 0 0 8px 0;
+  color: #4a5568;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status-text .progress-bar {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.status-text .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ade80, #22c55e);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.status-text p {
+  margin: 0;
+  font-size: 12px;
+  color: #718096;
+}
+
+/* Dark mode for processing components */
+@media (prefers-color-scheme: dark) {
+  .processing-status {
+    background: linear-gradient(135deg, #2d3748, #1a202c);
+    border-color: #4a5568;
+  }
+  
+  .status-text h4 {
+    color: #e2e8f0;
+  }
+  
+  .status-text .progress-bar {
+    background: #4a5568;
+  }
+  
+  .status-text p {
+    color: #a0aec0;
+  }
+}
+
+/* Toggle button styles */
+.toggle-btn {
+  background: none;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn:hover {
+  background: #f7fafc;
+  border-color: #a0aec0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .toggle-btn {
+    border-color: #4a5568;
+    color: #e2e8f0;
+  }
+  
+  .toggle-btn:hover {
+    background: #2d3748;
+    border-color: #718096;
+  }
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface-color, #f8f9fa);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.section-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

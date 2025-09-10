@@ -9,12 +9,9 @@ import * as pdfjsLib from "pdfjs-dist";
 // import "pdfjs-dist/web/pdf_viewer.css"; // This causes build errors, will use custom styles
 // Remove complex PDF.js viewer imports that cause compilation issues
 
-// Set up PDF.js worker
-// Use a local copy of the worker file to avoid relying on a CDN
-pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
-// Ensure standard fonts (Type1) can render text content like labels in PDFs
-// Use public path so the dev server and Electron can serve these assets
-(pdfjsLib as any).GlobalWorkerOptions.standardFontDataUrl = "/standard_fonts/";
+// PDF.js worker is configured in App.tsx to handle Electron vs web environments
+// Standard fonts disabled to prevent additional resource loading issues
+// (pdfjsLib as any).GlobalWorkerOptions.standardFontDataUrl = "/standard_fonts/";
 
 export type Tool = "select" | "text" | "checkbox" | "signature";
 

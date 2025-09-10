@@ -11,7 +11,14 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import UnifiedPDFEditor from "./components/UnifiedPDFEditor";
 import UnifiedContentViewer from "./components/UnifiedContentViewer";
+import FormTodoList from "./components/FormTodoList";
+import {
+  usePDFFormProcessor,
+  getProcessingStatusMessage,
+} from "./hooks/usePDFFormProcessor";
+import { TodoItem } from "./utils/todoGenerator";
 import "./components/UnifiedPDFEditor.css";
+import "./components/FormProcessing.css";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -180,6 +187,14 @@ function App() {
     const timestamp = new Date().toLocaleTimeString();
     setDebugLog((prev) => [...prev.slice(-9), `${timestamp}: ${message}`]);
   }, []);
+
+  // PDF Form Processor
+  const formProcessor = usePDFFormProcessor();
+
+  // Additional state for form processing UI
+  const [showFormTodos, setShowFormTodos] = useState(false);
+  const [formProcessingEnabled, setFormProcessingEnabled] = useState(true);
+  const [ocrEnabled, setOcrEnabled] = useState(false); // Disabled by default to avoid runtime errors
 
   // Enable debug mode with Ctrl+D
   useEffect(() => {
@@ -670,27 +685,35 @@ function App() {
     addDebugLog,
   ]);
 
-  // Setup PDF.js worker on mount
+  // Setup PDF.js worker on mount - Completely disable workers for stability
   useEffect(() => {
     try {
-      // Try to use unpkg CDN first (most reliable for newer versions)
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
-      addDebugLog("PDF.js worker configured with unpkg CDN");
-    } catch (error) {
-      // Fallback: create a simple blob worker that disables worker functionality
-      const workerBlob = new Blob(
-        [
-          `
-        self.addEventListener('message', function(e) {
-          // Just acknowledge the message
-          self.postMessage(e.data);
-        });
-      `,
-        ],
-        { type: "application/javascript" }
+      // Completely disable PDF.js workers to prevent any worker loading issues
+      // This forces PDF.js to run in main thread mode, which is more stable in Electron
+      (pdfjsLib as any).GlobalWorkerOptions.workerSrc = false;
+
+      // Also disable standard font loading to prevent additional resource loading issues
+      (pdfjsLib as any).GlobalWorkerOptions.standardFontDataUrl = null;
+
+      addDebugLog(
+        "PDF.js worker completely disabled - using main thread mode for maximum stability"
       );
-      pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);
-      addDebugLog("PDF.js worker configured with fallback blob");
+
+      // Set additional PDF.js options to prevent worker creation
+      if (typeof (pdfjsLib as any).disableWorker !== "undefined") {
+        (pdfjsLib as any).disableWorker = true;
+      }
+    } catch (error) {
+      console.warn("PDF.js configuration error:", error);
+      // Force disable even if there are errors
+      try {
+        (pdfjsLib as any).GlobalWorkerOptions.workerSrc = false;
+        addDebugLog(
+          "PDF.js worker forcibly disabled due to configuration error"
+        );
+      } catch (fallbackError) {
+        console.error("Could not disable PDF.js worker:", fallbackError);
+      }
     }
   }, [addDebugLog]);
 
@@ -965,6 +988,36 @@ function App() {
 
           // Automatically generate summary
           generatePdfSummary(pdfBytes);
+
+          // Process PDF for form fields if feature is enabled and OCR is enabled
+          if (formProcessingEnabled && formProcessor.isReady && ocrEnabled) {
+            addDebugLog("Starting PDF form field analysis...");
+            setShowFormTodos(true);
+            formProcessor
+              .processPDF(pdfBytes)
+              .then((success) => {
+                if (success) {
+                  addDebugLog(
+                    `Form analysis completed: ${
+                      formProcessor.todoResult?.totalItems || 0
+                    } fields found`
+                  );
+                } else {
+                  addDebugLog(
+                    `Form analysis failed: ${
+                      formProcessor.error || "Unknown error"
+                    }`
+                  );
+                  // Don't show the todos section if analysis failed
+                  setShowFormTodos(false);
+                }
+              })
+              .catch((error) => {
+                addDebugLog(`Form analysis error: ${error.message || error}`);
+                setShowFormTodos(false);
+                console.error("PDF form processing error:", error);
+              });
+          }
         } else {
           throw new Error(
             loadResult.error || "Failed to load PDF in unified viewer"
@@ -3556,6 +3609,68 @@ ${textContent}`;
                         <span className="typing-text modern-shine">
                           Analyzing document...
                         </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {/* Form Todo List for PDFs with form fields */}
+              {activeTab &&
+                (activeTab.isPDF || activeTab.contentType === "pdf") &&
+                showFormTodos &&
+                formProcessor.hasResults && (
+                  <div className="form-todos-section">
+                    <FormTodoList
+                      categories={formProcessor.todoResult!.categories}
+                      totalItems={formProcessor.todoResult!.totalItems}
+                      completedItems={formProcessor.todoResult!.completedItems}
+                      progress={formProcessor.todoResult!.progress}
+                      estimatedTotalTime={
+                        formProcessor.todoResult!.estimatedTotalTime
+                      }
+                      nextAction={formProcessor.todoResult!.nextAction}
+                      onItemClick={(todoId: string, item: TodoItem) => {
+                        console.log(`Todo item clicked: ${todoId}`, item);
+                        addDebugLog(`Clicked todo: ${item.title}`);
+                      }}
+                      onItemStatusChange={(
+                        todoId: string,
+                        status: TodoItem["status"]
+                      ) => {
+                        formProcessor.updateTodoStatus(todoId, status);
+                        addDebugLog(`Updated ${todoId} status to ${status}`);
+                      }}
+                      onRefresh={() => {
+                        if (currentTabPdfBytes) {
+                          addDebugLog("Refreshing form analysis...");
+                          formProcessor.processPDF(currentTabPdfBytes);
+                        }
+                      }}
+                      isProcessing={formProcessor.isProcessing}
+                    />
+                  </div>
+                )}
+
+              {/* Form Processing Status */}
+              {activeTab &&
+                (activeTab.isPDF || activeTab.contentType === "pdf") &&
+                formProcessor.isProcessing && (
+                  <div className="processing-status">
+                    <div className="status-content">
+                      <div className="status-icon">🔍</div>
+                      <div className="status-text">
+                        <h4>
+                          {getProcessingStatusMessage(
+                            formProcessor.processingStep
+                          )}
+                        </h4>
+                        <div className="progress-bar">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${formProcessor.progress}%` }}
+                          />
+                        </div>
+                        <p>{formProcessor.progress}% complete</p>
                       </div>
                     </div>
                   </div>
