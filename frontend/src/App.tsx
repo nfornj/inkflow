@@ -12,6 +12,7 @@ import rehypeRaw from "rehype-raw";
 import UnifiedPDFEditor from "./components/UnifiedPDFEditor";
 import UnifiedContentViewer from "./components/UnifiedContentViewer";
 import FormTodoList from "./components/FormTodoList";
+import ChatActionChips from "./components/ChatActionChips";
 import {
   usePDFFormProcessor,
   getProcessingStatusMessage,
@@ -3785,6 +3786,14 @@ ${textContent}`;
             </div>
 
             <div className="gemini-input-container">
+              {/* Action chips positioned directly above the input (dummy data) */}
+              <ChatActionChips
+                todoEnabled={true}
+                pendingCount={6}
+                loading={false}
+                active={false}
+                onTodoClick={() => setShowFormTodos((v) => !v)}
+              />
               <div className="gemini-input">
                 <textarea
                   placeholder=""
