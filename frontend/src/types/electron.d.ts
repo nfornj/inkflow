@@ -49,7 +49,7 @@ export interface ElectronAPI {
   onUnifiedContentLoaded: (callback: (data: { id: string; url: string; contentType: string; title: string; bounds?: { x: number; y: number; width: number; height: number } }) => void) => void;
   onUnifiedContentError: (callback: (data: { id: string; error: string; contentType: string }) => void) => void;
   onUnifiedContentNavigate: (callback: (data: { id: string; url: string; contentType: string }) => void) => void;
-  onPdfDetected: (callback: (data: { id: string; url: string; bounds?: { x: number; y: number; width: number; height: number }; scale?: number }) => void) => void;
+  onPdfDetected: (callback: (data: { id: string; url: string; bounds?: { x: number; y: number; width: number; height: number }; scale?: number; pdfBytes?: number[] }) => void) => void;
   
   // Legacy browser event listeners (for backward compatibility)
   onBrowserLoading: (callback: (data: { loading: boolean }) => void) => void;
@@ -81,6 +81,14 @@ export interface ElectronAPI {
   // PDF Finalizer APIs (burning in form data)
   pdfFinalizerFinalize: (originalPdfBuffer: ArrayBuffer | number[], formData: any, options?: any) => Promise<{ success: boolean; data?: ArrayBuffer; error?: string }>;
   pdfFinalizerValidateFormData: (formData: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+
+  // LLM Form Analyzer APIs
+  analyzePDFWithLLM: (request: { pdfText: string; options?: any }) => Promise<LLMFormAnalysisResult>;
+  updateLLMTodoStatus: (request: { todoId: string; status: string; todoList: any }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  extractPDFText: (pdfBytes: Uint8Array) => Promise<{ success: boolean; text?: string; error?: string }>;
+  
+  // Debug logging
+  debugLog: (message: string) => Promise<void>;
 }
 
 // LLM Autofill Type Definitions
@@ -197,6 +205,89 @@ export interface AutofillStatusResult {
     currentModel?: string;
   };
   error?: string;
+}
+
+// LLM Form Analysis Type Definitions
+export interface LLMFormAnalysisResult {
+  success: boolean;
+  formStructure?: {
+    sections: Array<{
+      id: string;
+      title: string;
+      description: string;
+      priority: number;
+      required: boolean;
+      fields: string[];
+    }>;
+    fields: Array<{
+      id: string;
+      name: string;
+      type: string;
+      section: string;
+      required: boolean;
+      placeholder?: string;
+      validation?: string;
+      confidence: number;
+      position: {
+        page: number;
+        approximate_location: string;
+      };
+    }>;
+    metadata: {
+      form_type: string;
+      estimated_completion_time: string;
+      complexity: string;
+    };
+  };
+  todoList?: {
+    categories: Array<{
+      id: string;
+      name: string;
+      icon: string;
+      description: string;
+      priority: number;
+      required: boolean;
+      estimatedTime: string;
+      items: Array<{
+        id: string;
+        title: string;
+        description: string;
+        status: 'pending' | 'in_progress' | 'completed' | 'skipped';
+        priority: 'high' | 'medium' | 'low';
+        required: boolean;
+        estimatedTime: string;
+        fieldIds: string[];
+        tips: string[];
+        completionAnimation: string;
+        animationTrigger?: {
+          type: string;
+          timestamp: number;
+          animation: string;
+        };
+      }>;
+      completed: number;
+      total: number;
+      progress: number;
+    }>;
+    summary: {
+      totalItems: number;
+      completedItems: number;
+      progress: number;
+      estimatedTotalTime: string;
+      requiredItems: number;
+      optionalItems: number;
+    };
+  };
+  fieldMapping?: Record<string, any>;
+  metadata?: {
+    processingTime: number;
+    totalSections: number;
+    totalFields: number;
+    requiredFields: number;
+    method: string;
+  };
+  error?: string;
+  fallbackData?: any;
 }
 
 declare global {

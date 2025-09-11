@@ -3,7 +3,8 @@
  * Phase 2 Implementation - Using Ollama for inference
  */
 
-const fetch = require('node-fetch');
+// Dynamic import for node-fetch (ES module)
+let fetch;
 
 class LLMService {
   constructor() {
@@ -19,9 +20,27 @@ class LLMService {
     this.config = {
       temperature: 0.1,
       topP: 0.9,
-      maxTokens: 100,
+      maxTokens: 1500,  // Increased for complete JSON responses
       contextLength: 4096
     };
+    this.fetchInitialized = false;
+  }
+
+  /**
+   * Initialize the fetch module (dynamic import for ES module compatibility)
+   */
+  async initializeFetch() {
+    if (!this.fetchInitialized) {
+      try {
+        const fetchModule = await import('node-fetch');
+        fetch = fetchModule.default;
+        this.fetchInitialized = true;
+        console.log('LLMService: node-fetch initialized successfully');
+      } catch (error) {
+        console.error('LLMService: Failed to initialize node-fetch:', error);
+        throw new Error(`Failed to initialize fetch: ${error.message}`);
+      }
+    }
   }
 
   /**
@@ -155,6 +174,9 @@ class LLMService {
    */
   async checkOllamaStatus() {
     try {
+      // Ensure fetch is initialized
+      await this.initializeFetch();
+      
       const response = await fetch(`${this.ollamaUrl}/api/tags`, {
         method: 'GET',
         timeout: 5000
@@ -173,6 +195,9 @@ class LLMService {
    */
   async checkModelAvailability(modelName) {
     try {
+      // Ensure fetch is initialized
+      await this.initializeFetch();
+      
       const response = await fetch(`${this.ollamaUrl}/api/tags`, {
         method: 'GET',
         timeout: 5000
@@ -202,6 +227,9 @@ class LLMService {
    */
   async callOllama(prompt) {
     try {
+      // Ensure fetch is initialized
+      await this.initializeFetch();
+      
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
         method: 'POST',
         headers: {

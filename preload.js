@@ -101,6 +101,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pdfFinalizerFinalize: (originalPdfBuffer, formData, options) => ipcRenderer.invoke('pdf-finalizer-finalize', originalPdfBuffer, formData, options),
   pdfFinalizerValidateFormData: (formData) => ipcRenderer.invoke('pdf-finalizer-validate-form-data', formData),
 
+  // LLM Form Analyzer APIs
+  analyzePDFWithLLM: (request) => ipcRenderer.invoke('analyze-pdf-with-llm', request),
+  updateLLMTodoStatus: (request) => ipcRenderer.invoke('update-llm-todo-status', request),
+  extractPDFText: (pdfBytes) => ipcRenderer.invoke('extract-pdf-text', pdfBytes),
+  
+  // Debug logging
+  debugLog: (message) => ipcRenderer.invoke('debug-log', message),
+
   // LLM Autofill APIs
   llmAutofillGetSuggestion: (fieldContext) => ipcRenderer.invoke('llm-autofill-get-suggestion', fieldContext),
   llmAutofillGenerateQuestion: (fieldContext) => ipcRenderer.invoke('llm-autofill-generate-question', fieldContext),

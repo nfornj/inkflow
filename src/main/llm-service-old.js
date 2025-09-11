@@ -3,7 +3,8 @@
  * Phase 2 Implementation - Using Ollama for inference
  */
 
-const fetch = require('node-fetch');
+// Dynamic import for node-fetch (ES module)
+let fetch;
 
 class LLMService {
   constructor() {
@@ -22,6 +23,24 @@ class LLMService {
       maxTokens: 100,
       contextLength: 4096
     };
+    this.fetchInitialized = false;
+  }
+
+  /**
+   * Initialize the fetch module (dynamic import for ES module compatibility)
+   */
+  async initializeFetch() {
+    if (!this.fetchInitialized) {
+      try {
+        const fetchModule = await import('node-fetch');
+        fetch = fetchModule.default;
+        this.fetchInitialized = true;
+        console.log('LLMService: node-fetch initialized successfully');
+      } catch (error) {
+        console.error('LLMService: Failed to initialize node-fetch:', error);
+        throw new Error(`Failed to initialize fetch: ${error.message}`);
+      }
+    }
   }
 
   /**

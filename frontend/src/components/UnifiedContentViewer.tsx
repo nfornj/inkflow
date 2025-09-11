@@ -21,6 +21,7 @@ interface UnifiedContentViewerProps {
   isActive: boolean;
   onFormFieldsDetected?: (fields: FormField[]) => void;
   onSave?: (fields: FormField[], pdfData?: Uint8Array) => void;
+  onPdfBytesLoaded?: (pdfBytes: Uint8Array) => void;
   selectedFont?: string;
   selectedFontSize?: number;
 }
@@ -29,6 +30,7 @@ const UnifiedContentViewer: React.FC<UnifiedContentViewerProps> = ({
   isActive,
   onFormFieldsDetected,
   onSave,
+  onPdfBytesLoaded,
   selectedFont = "Helvetica",
   selectedFontSize = 14,
 }) => {
@@ -165,6 +167,11 @@ const UnifiedContentViewer: React.FC<UnifiedContentViewerProps> = ({
         }
 
         setPdfData(pdfBytes);
+
+        // Notify parent component about PDF bytes
+        if (onPdfBytesLoaded) {
+          onPdfBytesLoaded(pdfBytes);
+        }
 
         // Load PDF with PDF.js
         const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;

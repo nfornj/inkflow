@@ -793,11 +793,45 @@ function App() {
       addDebugLog(`Browser error: ${data.error}`);
     });
 
+    // Listen for PDF detection events with PDF bytes
+    window.electronAPI.onPdfDetected((data) => {
+      console.log("📝 PDF detected in App.tsx:", data);
+      addDebugLog(
+        `PDF detected: ${
+          data.url
+        }, hasPdfBytes: ${!!data.pdfBytes}, bytesLength: ${
+          data.pdfBytes?.length
+        }`
+      );
+
+      if (data.pdfBytes && data.pdfBytes.length > 0) {
+        // Update the active tab with PDF bytes (convert from number array to Uint8Array)
+        const pdfBytesArray = new Uint8Array(data.pdfBytes);
+        setTabs((prev) =>
+          prev.map((tab) =>
+            tab.isActive
+              ? {
+                  ...tab,
+                  pdfBytes: pdfBytesArray,
+                  contentType: "pdf" as const,
+                  isPDF: true,
+                }
+              : tab
+          )
+        );
+
+        addDebugLog(
+          `Updated active tab with PDF bytes: ${data.pdfBytes.length} bytes`
+        );
+      }
+    });
+
     return () => {
       if (window.electronAPI) {
         window.electronAPI.removeAllListeners("browser-loading");
         window.electronAPI.removeAllListeners("browser-url-changed");
         window.electronAPI.removeAllListeners("browser-error");
+        window.electronAPI.removeAllListeners("pdf-detected");
       }
     };
   }, [addDebugLog]);
@@ -943,6 +977,12 @@ function App() {
         // Convert ArrayBuffer to Uint8Array and create a copy to prevent detachment
         const pdfBytes = new Uint8Array(result.data.slice(0));
 
+        addDebugLog(
+          `PDF bytes created: length=${pdfBytes.length}, isDetached=${
+            pdfBytes.buffer.byteLength === 0
+          }`
+        );
+
         // Store safe copy as regular array per tab
         setTabPdfData((prev) => ({
           ...prev,
@@ -996,9 +1036,9 @@ function App() {
             addDebugLog(
               `Updated tab state: contentType=${
                 updatedActiveTab?.contentType
-              }, hasPdfBytes=${!!updatedActiveTab?.pdfBytes}, title=${
-                updatedActiveTab?.title
-              }`
+              }, hasPdfBytes=${!!updatedActiveTab?.pdfBytes}, pdfBytesLength=${
+                updatedActiveTab?.pdfBytes?.length
+              }, title=${updatedActiveTab?.title}`
             );
             return updatedTabs;
           });
@@ -3862,6 +3902,7 @@ ${textContent}`;
                 loading={formProcessor.isProcessing}
                 active={showFormTodos}
                 onTodoClick={() => setShowFormTodos((v) => !v)}
+                pdfBytes={activeTab?.pdfBytes}
                 todoItems={
                   formProcessor.todoResult?.categories?.flatMap(
                     (cat) =>

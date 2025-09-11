@@ -15,6 +15,9 @@ const PDFProcessor = require('./src/main/pdf-processor');
 // Import PDF Finalizer for burning in form data
 const PDFFinalizer = require('./src/main/pdf-finalizer');
 
+// Import LLM Form Analyzer for enhanced form detection
+const { LLMFormAnalyzer } = require('./src/main/llm-form-analyzer');
+
 // Global variables
 let mainWindow;
 let browserView;
@@ -27,6 +30,7 @@ let activeTabId = null; // Renderer-provided logical tab id
 let autofillEngine = null;
 let pdfProcessor = null;
 let pdfFinalizer = null;
+let llmFormAnalyzer = null;
 
 // Function to update BrowserView bounds based on current layout
 function updateBrowserViewBounds() {
@@ -109,6 +113,14 @@ async function createWindow() {
     console.log('LLM Autofill Engine initialized successfully');
   } catch (error) {
     console.error('Failed to initialize LLM Autofill Engine:', error);
+  }
+
+  // Initialize LLM Form Analyzer
+  try {
+    llmFormAnalyzer = new LLMFormAnalyzer();
+    console.log('LLM Form Analyzer initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize LLM Form Analyzer:', error);
   }
 
   // Initialize PDF Processor
@@ -291,12 +303,48 @@ function createUnifiedView(contentUrl, contentType = 'auto') {
     // If it's a PDF, enable form detection overlay with positioning info
     if (isPdf) {
       console.log('📝 PDF detected - enabling form overlay system');
-      mainWindow.webContents.send('pdf-detected', { 
-        id: currentBrowserViewId,
-        url: currentUrl,
-        bounds: browserView.getBounds(), // BrowserView position and size
-        scale: 1.0 // Default scale, can be updated later
-      });
+      
+      // Load PDF bytes and send to renderer
+      (async () => {
+        try {
+          let pdfBytes = null;
+          
+          // If it's a local file, read the PDF bytes
+          if (currentUrl.startsWith('file://')) {
+            const filePath = currentUrl.replace('file://', '');
+            const fs = require('fs').promises;
+            const fileData = await fs.readFile(filePath);
+            pdfBytes = Array.from(fileData); // Convert to array for JSON serialization
+            console.log('📄 PDF bytes loaded for LLM processing:', pdfBytes.length, 'bytes');
+          }
+          
+          const eventData = { 
+            id: currentBrowserViewId,
+            url: currentUrl,
+            bounds: browserView.getBounds(), // BrowserView position and size
+            scale: 1.0, // Default scale, can be updated later
+            pdfBytes: pdfBytes // Include PDF bytes for LLM processing
+          };
+          
+          console.log('📤 Sending pdf-detected event to renderer:', {
+            id: eventData.id,
+            url: eventData.url,
+            hasPdfBytes: !!eventData.pdfBytes,
+            pdfBytesLength: eventData.pdfBytes?.length
+          });
+          
+          mainWindow.webContents.send('pdf-detected', eventData);
+        } catch (error) {
+          console.error('Error loading PDF bytes:', error);
+          // Send without PDF bytes if loading fails
+          mainWindow.webContents.send('pdf-detected', { 
+            id: currentBrowserViewId,
+            url: currentUrl,
+            bounds: browserView.getBounds(),
+            scale: 1.0
+          });
+        }
+      })();
     }
   });
 
@@ -1629,6 +1677,105 @@ ipcMain.handle('pdf-finalizer-validate-form-data', async (event, formData) => {
     return { success: true, data: validation };
   } catch (error) {
     console.error('Error validating form data:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Debug logging IPC handler
+ipcMain.handle('debug-log', async (event, message) => {
+  console.log('🔍 [RENDERER DEBUG]:', message);
+});
+
+// LLM Form Analyzer IPC Handler
+ipcMain.handle('analyze-pdf-with-llm', async (event, request) => {
+  try {
+    console.log('🔍 LLM Form Analysis Request Received:', {
+      hasAnalyzer: !!llmFormAnalyzer,
+      requestKeys: Object.keys(request),
+      pdfTextLength: request.pdfText?.length
+    });
+    
+    if (!llmFormAnalyzer) {
+      return { success: false, error: 'LLM Form Analyzer not initialized' };
+    }
+
+    const { pdfText, options = {} } = request;
+    
+    if (!pdfText || typeof pdfText !== 'string') {
+      return { success: false, error: 'Invalid PDF text provided' };
+    }
+
+    console.log('Starting LLM form analysis...');
+    const startTime = Date.now();
+    
+    const analysisResult = await llmFormAnalyzer.analyzePDFForForms(pdfText, options);
+    
+    const processingTime = Date.now() - startTime;
+    console.log(`LLM form analysis completed in ${processingTime}ms`);
+    
+    return analysisResult;
+    
+  } catch (error) {
+    console.error('Error in LLM form analysis:', error);
+    return { 
+      success: false, 
+      error: error.message,
+      fallbackData: llmFormAnalyzer ? llmFormAnalyzer.generateFallbackTodos(request.pdfText || '') : null
+    };
+  }
+});
+
+ipcMain.handle('update-llm-todo-status', async (event, request) => {
+  try {
+    if (!llmFormAnalyzer) {
+      return { success: false, error: 'LLM Form Analyzer not initialized' };
+    }
+
+    const { todoId, status, todoList } = request;
+    
+    if (!todoId || !status || !todoList) {
+      return { success: false, error: 'Missing required parameters' };
+    }
+
+    const updatedTodoList = llmFormAnalyzer.updateTodoStatus(todoId, status, todoList);
+    
+    return { success: true, data: updatedTodoList };
+    
+  } catch (error) {
+    console.error('Error updating todo status:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('extract-pdf-text', async (event, pdfBytes) => {
+  try {
+    console.log('📄 PDF Text Extraction Request:', {
+      hasPdfBytes: !!pdfBytes,
+      pdfBytesLength: pdfBytes?.length,
+      pdfBytesType: typeof pdfBytes
+    });
+    
+    // Use PDF.js for Node.js environment (dynamic import for ES module)
+    const pdfjs = await import('pdfjs-dist');
+    
+    const pdf = await pdfjs.getDocument({ data: pdfBytes }).promise;
+    let fullText = '';
+    
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      
+      const pageText = textContent.items
+        .map(item => item.str)
+        .join(' ');
+      
+      fullText += `\n\n--- Page ${pageNum} ---\n${pageText}`;
+    }
+    
+    return { success: true, text: fullText.trim() };
+    
+  } catch (error) {
+    console.error('Error extracting PDF text:', error);
     return { success: false, error: error.message };
   }
 });

@@ -319,4 +319,206 @@
   border-radius: 4px;
 }
 
+/* LLM Todo Categories */
+.todo-category {
+  margin-bottom: 16px;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 600;
+  font-size: 12px;
+  color: #374151;
+}
+
+.category-icon {
+  font-size: 14px;
+}
+
+.category-title {
+  flex: 1;
+}
+
+.category-progress {
+  font-size: 11px;
+  color: #6b7280;
+  background: #e5e7eb;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.category-items {
+  padding: 4px 0;
+}
+
+/* Enhanced Todo Items */
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.todo-item:hover {
+  background: #f8f9fa;
+}
+
+.todo-item.completed {
+  opacity: 0.7;
+  border-left-color: #10b981;
+}
+
+.todo-item.in_progress {
+  border-left-color: #f59e0b;
+}
+
+.todo-item.pending {
+  border-left-color: #6b7280;
+}
+
+/* Completion Animations */
+.todo-item.animating {
+  animation: completion-pulse 0.6s ease-out;
+}
+
+@keyframes completion-pulse {
+  0% {
+    transform: scale(1);
+    background: #f8f9fa;
+  }
+  50% {
+    transform: scale(1.02);
+    background: #dcfce7;
+  }
+  100% {
+    transform: scale(1);
+    background: #f8f9fa;
+  }
+}
+
+.checkmark {
+  color: #10b981;
+  font-weight: bold;
+  font-size: 12px;
+  animation: checkmark-appear 0.3s ease-out;
+}
+
+@keyframes checkmark-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Item Content Layout */
+.item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.item-description {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.required-badge {
+  font-size: 10px;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid #fecaca;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.item-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.item-time {
+  background: #f3f4f6;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.item-priority {
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.priority-high {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.priority-medium {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.priority-low {
+  background: #f0f9ff;
+  color: #0284c7;
+}
+
+/* Processing State */
+.processing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.processing-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  animation: spin 2s linear infinite;
+}
+
+.processing-text {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.processing-subtext {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Legacy Todo Items */
+.todo-item.legacy {
+  border-left: 3px solid #e5e7eb;
+}
+
+.todo-item.legacy .item-content {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
 
