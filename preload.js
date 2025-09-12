@@ -102,8 +102,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pdfFinalizerValidateFormData: (formData) => ipcRenderer.invoke('pdf-finalizer-validate-form-data', formData),
 
   // LLM Form Analyzer APIs
-  analyzePDFWithLLM: (request) => ipcRenderer.invoke('analyze-pdf-with-llm', request),
+  analyzePDFMultiModal: (request) => ipcRenderer.invoke('analyze-pdf-multimodal', request),
+  analyzePDFWithLLM: (request) => ipcRenderer.invoke('analyze-pdf-with-llm', request), // Legacy
+  clearFormCache: () => ipcRenderer.invoke('clear-form-cache'),
   updateLLMTodoStatus: (request) => ipcRenderer.invoke('update-llm-todo-status', request),
+
+  // LLM Provider Management
+  getLLMProviders: () => ipcRenderer.invoke('get-llm-providers'),
+  switchLLMProvider: (providerId) => ipcRenderer.invoke('switch-llm-provider', providerId),
+  getLLMPerformance: () => ipcRenderer.invoke('get-llm-performance'),
+  autoSelectBestProvider: () => ipcRenderer.invoke('auto-select-best-provider'),
   extractPDFText: (pdfBytes) => ipcRenderer.invoke('extract-pdf-text', pdfBytes),
   
   // Debug logging

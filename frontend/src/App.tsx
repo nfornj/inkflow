@@ -13,6 +13,7 @@ import UnifiedPDFEditor from "./components/UnifiedPDFEditor";
 import UnifiedContentViewer from "./components/UnifiedContentViewer";
 import FormTodoList from "./components/FormTodoList";
 import ChatActionChips from "./components/ChatActionChips";
+import LLMProviderSettings from "./components/LLMProviderSettings";
 import {
   usePDFFormProcessor,
   getProcessingStatusMessage,
@@ -3604,6 +3605,14 @@ ${textContent}`;
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* LLM Provider Settings Section */}
+                  <div className="setting-section-tab">
+                    <h3>🤖 LLM Provider</h3>
+                    <div className="setting-item">
+                      <LLMProviderSettings />
                     </div>
                   </div>
 

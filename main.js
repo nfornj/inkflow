@@ -18,6 +18,14 @@ const PDFFinalizer = require('./src/main/pdf-finalizer');
 // Import LLM Form Analyzer for enhanced form detection
 const { LLMFormAnalyzer } = require('./src/main/llm-form-analyzer');
 
+// Import Multi-Modal Form Detector
+const FormDetector = require('./src/main/form-detector');
+
+// Import LLM Provider System
+const LLMProviderManager = require('./src/main/llm-provider-manager');
+const LlamaProvider = require('./src/main/llm-providers/llama-provider');
+const MiniCPMProvider = require('./src/main/llm-providers/minicpm-provider');
+
 // Global variables
 let mainWindow;
 let browserView;
@@ -31,6 +39,8 @@ let autofillEngine = null;
 let pdfProcessor = null;
 let pdfFinalizer = null;
 let llmFormAnalyzer = null;
+let formDetector = null;
+let llmProviderManager = null;
 
 // Function to update BrowserView bounds based on current layout
 function updateBrowserViewBounds() {
@@ -115,13 +125,42 @@ async function createWindow() {
     console.error('Failed to initialize LLM Autofill Engine:', error);
   }
 
-  // Initialize LLM Form Analyzer
+  // Initialize LLM Provider Manager
   try {
-    llmFormAnalyzer = new LLMFormAnalyzer();
+    llmProviderManager = new LLMProviderManager();
+    
+    // Register MiniCPM-V provider (set as default for testing)
+    const minicpmProvider = new MiniCPMProvider();
+    llmProviderManager.registerProvider('minicpm', minicpmProvider);
+    
+    // Register Llama provider
+    const llamaProvider = new LlamaProvider();
+    llmProviderManager.registerProvider('llama', llamaProvider);
+    
+    // Initialize all providers
+    await llmProviderManager.initializeAllProviders();
+    
+    console.log('LLM Provider Manager initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize LLM Provider Manager:', error);
+  }
+
+  // Initialize LLM Form Analyzer (using provider manager)
+  try {
+    llmFormAnalyzer = new LLMFormAnalyzer(llmProviderManager);
     console.log('LLM Form Analyzer initialized successfully');
   } catch (error) {
     console.error('Failed to initialize LLM Form Analyzer:', error);
   }
+
+  // Initialize Multi-Modal Form Detector
+  try {
+    formDetector = new FormDetector(llmFormAnalyzer);
+    console.log('Multi-Modal Form Detector initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize Multi-Modal Form Detector:', error);
+  }
+
 
   // Initialize PDF Processor
   try {
@@ -1687,9 +1726,72 @@ ipcMain.handle('debug-log', async (event, message) => {
 });
 
 // LLM Form Analyzer IPC Handler
+
+// Multi-Modal Form Detection (NEW - Primary method)
+ipcMain.handle('analyze-pdf-multimodal', async (event, request) => {
+  try {
+    console.log('🚀 Multi-Modal Analysis Request Received:', {
+      hasFormDetector: !!formDetector,
+      requestKeys: Object.keys(request),
+      pdfBytesLength: request.pdfBytes?.length,
+      method: 'multi_modal_detection'
+    });
+    
+    if (!formDetector) {
+      return { success: false, error: 'Multi-Modal Form Detector not initialized' };
+    }
+
+    const { pdfBytes, options = {} } = request;
+    
+    if (!pdfBytes || pdfBytes.length === 0) {
+      return { success: false, error: 'Invalid PDF bytes provided' };
+    }
+
+    console.log('Starting multi-modal form detection...');
+    const startTime = Date.now();
+    
+    // Convert array to Uint8Array if needed
+    const pdfBytesArray = new Uint8Array(pdfBytes);
+    
+    // Multi-modal detection with automatic fallback chain
+    const analysisResult = await formDetector.detectFormFields(pdfBytesArray, options);
+    
+    const processingTime = Date.now() - startTime;
+    console.log(`🚀 Multi-modal detection completed in ${processingTime}ms using method: ${analysisResult.method}`);
+    
+    return analysisResult;
+    
+  } catch (error) {
+    console.error('Error in multi-modal analysis:', error);
+    return { 
+      success: false, 
+      error: error.message,
+      method: 'multi_modal_error',
+      fallbackData: null
+    };
+  }
+});
+
+// Clear form detection cache (for testing loading spinner)
+ipcMain.handle('clear-form-cache', async (event) => {
+  try {
+    if (!formDetector) {
+      return { success: false, error: 'Form detector not initialized' };
+    }
+
+    formDetector.clearCache();
+    console.log('🗑️ Form detection cache cleared');
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Failed to clear form cache:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Legacy dual-pass analysis (kept for backward compatibility)
 ipcMain.handle('analyze-pdf-with-llm', async (event, request) => {
   try {
-    console.log('🔍 LLM Form Analysis Request Received:', {
+    console.log('🔍 LLM Form Analysis Request Received (legacy dual-pass):', {
       hasAnalyzer: !!llmFormAnalyzer,
       requestKeys: Object.keys(request),
       pdfTextLength: request.pdfText?.length
@@ -1705,7 +1807,7 @@ ipcMain.handle('analyze-pdf-with-llm', async (event, request) => {
       return { success: false, error: 'Invalid PDF text provided' };
     }
 
-    console.log('Starting LLM form analysis...');
+    console.log('Starting LLM form analysis (legacy dual-pass)...');
     const startTime = Date.now();
     
     const analysisResult = await llmFormAnalyzer.analyzePDFForForms(pdfText, options);
@@ -1725,10 +1827,110 @@ ipcMain.handle('analyze-pdf-with-llm', async (event, request) => {
   }
 });
 
+// LLM Provider Management IPC Handlers
+
+// Get available LLM providers
+ipcMain.handle('get-llm-providers', async (event) => {
+  try {
+    if (!llmProviderManager) {
+      return { success: false, error: 'LLM Provider Manager not initialized' };
+    }
+
+    const providers = await llmProviderManager.getAvailableProviders();
+    const activeProviderId = llmProviderManager.getActiveProviderId();
+    const performanceComparison = llmProviderManager.getPerformanceComparison();
+
+    return {
+      success: true,
+      providers,
+      activeProviderId,
+      performanceComparison
+    };
+  } catch (error) {
+    console.error('Failed to get LLM providers:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Switch LLM provider
+ipcMain.handle('switch-llm-provider', async (event, providerId) => {
+  try {
+    if (!llmProviderManager) {
+      return { success: false, error: 'LLM Provider Manager not initialized' };
+    }
+
+    console.log(`🔄 Switching to LLM provider: ${providerId}`);
+    const success = await llmProviderManager.switchProvider(providerId);
+
+    if (success) {
+      // Update form analyzer to use new provider
+      if (llmFormAnalyzer) {
+        llmFormAnalyzer.setProviderManager(llmProviderManager);
+      }
+
+      const activeProvider = llmProviderManager.getActiveProvider();
+      console.log(`✅ Successfully switched to provider: ${providerId}`);
+      
+      return {
+        success: true,
+        activeProviderId: providerId,
+        providerInfo: activeProvider ? activeProvider.getModelInfo() : null
+      };
+    } else {
+      return { success: false, error: `Failed to switch to provider: ${providerId}` };
+    }
+  } catch (error) {
+    console.error('Failed to switch LLM provider:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get LLM provider performance stats
+ipcMain.handle('get-llm-performance', async (event) => {
+  try {
+    if (!llmProviderManager) {
+      return { success: false, error: 'LLM Provider Manager not initialized' };
+    }
+
+    const performanceComparison = llmProviderManager.getPerformanceComparison();
+    const fastestProvider = llmProviderManager.getFastestProvider();
+
+    return {
+      success: true,
+      performanceComparison,
+      fastestProvider
+    };
+  } catch (error) {
+    console.error('Failed to get LLM performance:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Auto-select best performing provider
+ipcMain.handle('auto-select-best-provider', async (event) => {
+  try {
+    if (!llmProviderManager) {
+      return { success: false, error: 'LLM Provider Manager not initialized' };
+    }
+
+    const switched = await llmProviderManager.autoSelectBestProvider();
+    const activeProviderId = llmProviderManager.getActiveProviderId();
+
+    return {
+      success: true,
+      switched,
+      activeProviderId
+    };
+  } catch (error) {
+    console.error('Failed to auto-select best provider:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('update-llm-todo-status', async (event, request) => {
   try {
     if (!llmFormAnalyzer) {
-      return { success: false, error: 'LLM Form Analyzer not initialized' };
+      return { success: false, error: 'LLM Form Analyzer not available' };
     }
 
     const { todoId, status, todoList } = request;
@@ -1737,9 +1939,9 @@ ipcMain.handle('update-llm-todo-status', async (event, request) => {
       return { success: false, error: 'Missing required parameters' };
     }
 
-    const updatedTodoList = llmFormAnalyzer.updateTodoStatus(todoId, status, todoList);
+    const result = await llmFormAnalyzer.updateTodoStatus(todoId, status, todoList);
     
-    return { success: true, data: updatedTodoList };
+    return result;
     
   } catch (error) {
     console.error('Error updating todo status:', error);

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./ChatActionChips.css";
 import { useLLMFormProcessor } from "../hooks/useLLMFormProcessor";
+import ModernTodoList from "./ModernTodoList";
 
 type TodoItem = {
   id: string;
@@ -30,16 +31,54 @@ export default function ChatActionChips({
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  // Prevent repeated analyses and UI flicker
+  const lastPdfSignatureRef = useRef<string | null>(null);
+  const analyzingRef = useRef<boolean>(false);
+  const [activeProvider, setActiveProvider] = useState<string>("LLM");
+
+  const computePdfSignature = (bytes?: Uint8Array): string | null => {
+    if (!bytes || bytes.length === 0) return null;
+    const len = bytes.length;
+    // Use first 16 bytes as a lightweight signature plus total length
+    const sampleSize = Math.min(16, len);
+    let head = "";
+    for (let i = 0; i < sampleSize; i++) head += bytes[i].toString(16);
+    return `${len}:${head}`;
+  };
 
   // LLM Form Processor integration
   const {
     isProcessing: llmProcessing,
     processPDFWithLLM,
+    resetAnalysis,
     todoList: llmTodoList,
     updateTodoStatus,
     animationQueue,
     clearAnimationQueue,
   } = useLLMFormProcessor();
+
+  // Fetch active provider on mount
+  useEffect(() => {
+    const fetchActiveProvider = async () => {
+      if (window.electronAPI?.getLLMProviders) {
+        try {
+          const result = await window.electronAPI.getLLMProviders();
+          if (result.success && result.providers) {
+            const activeProviderData = result.providers.find(
+              (p: any) => p.active
+            );
+            if (activeProviderData) {
+              setActiveProvider(activeProviderData.name);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch active provider:", error);
+        }
+      }
+    };
+
+    fetchActiveProvider();
+  }, []);
 
   // Close on outside click
   useEffect(() => {
@@ -51,13 +90,18 @@ export default function ChatActionChips({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
-  // Process PDF with LLM when pdfBytes are provided
+  // Reset analysis when pdf changes (tab switch or new upload)
+  useEffect(() => {
+    resetAnalysis();
+    lastPdfSignatureRef.current = null;
+  }, [pdfBytes, resetAnalysis]);
+
+  // Process PDF with LLM when a NEW pdfBytes buffer is provided
   useEffect(() => {
     console.log("ChatActionChips: PDF processing check:", {
       hasPdfBytes: !!pdfBytes,
       pdfBytesLength: pdfBytes?.length,
       todoEnabled,
-      llmProcessing,
     });
 
     // Send debug info to main process
@@ -69,18 +113,57 @@ export default function ChatActionChips({
       );
     }
 
-    if (pdfBytes && pdfBytes.length > 0 && !llmProcessing) {
+    const signature = computePdfSignature(pdfBytes);
+
+    // Only trigger when we have a new PDF signature and we're not already analyzing
+    if (
+      todoEnabled &&
+      pdfBytes &&
+      pdfBytes.length > 0 &&
+      signature &&
+      lastPdfSignatureRef.current !== signature &&
+      !analyzingRef.current
+    ) {
       console.log("Processing PDF with LLM for form detection...");
       if (window.electronAPI?.debugLog) {
         window.electronAPI.debugLog(
           "ChatActionChips: Starting PDF processing with LLM"
         );
       }
-      console.log("🔥 ChatActionChips: About to call processPDFWithLLM function");
-      const result = processPDFWithLLM(pdfBytes);
-      console.log("🔥 ChatActionChips: processPDFWithLLM call result:", result);
+      console.log(
+        "🔥 ChatActionChips: About to call processPDFWithLLM function"
+      );
+
+      // Properly handle the async call
+      analyzingRef.current = true;
+      processPDFWithLLM(pdfBytes)
+        .then((result) => {
+          console.log(
+            "🔥 ChatActionChips: processPDFWithLLM completed with result:",
+            result
+          );
+          if (window.electronAPI?.debugLog) {
+            window.electronAPI.debugLog(
+              `ChatActionChips: processPDFWithLLM completed: ${result}`
+            );
+          }
+          // Mark this PDF as processed successfully
+          lastPdfSignatureRef.current = signature;
+        })
+        .catch((error) => {
+          console.error("🚨 ChatActionChips: processPDFWithLLM failed:", error);
+          if (window.electronAPI?.debugLog) {
+            window.electronAPI.debugLog(
+              `ChatActionChips: processPDFWithLLM failed: ${error}`
+            );
+          }
+        })
+        .finally(() => {
+          analyzingRef.current = false;
+        });
     }
-  }, [pdfBytes, todoEnabled, llmProcessing, processPDFWithLLM]);
+    // Note: deliberately exclude llmProcessing to avoid re-trigger flicker
+  }, [pdfBytes, todoEnabled, processPDFWithLLM]);
 
   // Handle completion animations
   useEffect(() => {
@@ -97,6 +180,9 @@ export default function ChatActionChips({
   // Use LLM todo list if available, otherwise fallback to legacy todos
   const displayItems = llmTodoList?.categories || [];
   const hasLLMTodos = displayItems.length > 0;
+
+  // Always show analyzer results only; if none, show empty state
+  const finalDisplayItems = displayItems;
   const legacyTodos = todoItems.length > 0 ? todoItems : [];
 
   return (
@@ -128,125 +214,59 @@ export default function ChatActionChips({
       </button>
       {open && (
         <div className="chip-popover" role="dialog" aria-label="Agent Tasks">
-          <button
-            className="popover-header"
-            onClick={() => setOpen(false)}
-            title="Hide Agent Tasks"
-          >
-            <div className="chip-left">
-              <span className="infinity-symbol">∞</span>
-              <span className="chip-label">Agent Tasks</span>
-            </div>
-            <div className="chip-right">
-              <span className="action-link selected">
-                <span className="play-icon">▶</span>
-                Run All
-              </span>
-            </div>
-          </button>
-          <div className="popover-body">
-            {llmProcessing ? (
-              <div className="processing-state">
-                <div className="processing-icon">🔄</div>
-                <div className="processing-text">Analyzing form with AI...</div>
-                <div className="processing-subtext">
-                  Detecting form fields and generating tasks
-                </div>
+          {llmProcessing && !hasLLMTodos ? (
+            <div className="processing-state">
+              <div className="processing-icon">🔄</div>
+              <div className="processing-text">Analyzing form with AI...</div>
+              <div className="processing-subtext">
+                Detecting form fields and generating tasks
               </div>
-            ) : hasLLMTodos ? (
-              // Render LLM-generated todos with categories
-              displayItems.map((category) => (
-                <div key={category.id} className="todo-category">
-                  <div className="category-header">
-                    <span className="category-icon">{category.icon}</span>
-                    <span className="category-title">{category.name}</span>
-                    <span className="category-progress">
-                      {category.completed}/{category.total}
-                    </span>
-                  </div>
-                  <div className="category-items">
-                    {category.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`todo-item ${item.status} ${
-                          animationQueue.find((a) => a.todoId === item.id)
-                            ? "animating"
-                            : ""
-                        }`}
-                      >
-                        <label className="todo-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={item.status === "completed"}
-                            onChange={() => {
-                              const newStatus =
-                                item.status === "completed"
-                                  ? "pending"
-                                  : "completed";
-                              updateTodoStatus(item.id, newStatus);
-                            }}
-                          />
-                          <span className="checkbox-custom">
-                            {item.status === "completed" && (
-                              <span className="checkmark">✓</span>
-                            )}
-                          </span>
-                        </label>
-                        <div className="item-content">
-                          <span className="item-title">{item.title}</span>
-                          <span className="item-description">
-                            {item.description}
-                          </span>
-                          {item.required && (
-                            <span className="required-badge">Required</span>
-                          )}
-                        </div>
-                        <div className="item-meta">
-                          <span className="item-time">
-                            {item.estimatedTime}
-                          </span>
-                          <span
-                            className={`item-priority priority-${item.priority}`}
-                          >
-                            {item.priority}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
-            ) : legacyTodos.length > 0 ? (
-              // Fallback to legacy todos
-              legacyTodos.map((item, index) => (
-                <div key={item.id} className="todo-item legacy">
-                  <label className="todo-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={item.done || false}
-                      onChange={() => {
-                        console.log(`Toggled ${item.title}`);
-                      }}
-                    />
-                    <span className="checkbox-custom"></span>
-                  </label>
-                  <div className="item-content">
-                    <span className="item-title">{item.title}</span>
-                    <span className="item-category">{item.category}</span>
-                  </div>
-                  <div className="item-icon">📝</div>
-                </div>
-              ))
-            ) : (
-              <div className="no-todos">
-                <div className="no-todos-icon">📋</div>
-                <div className="no-todos-text">No form fields detected</div>
-                <div className="no-todos-subtext">
-                  Load a PDF to see form fields
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <ModernTodoList
+              categories={finalDisplayItems.map((category: any) => ({
+                id: category.id,
+                name: category.name,
+                icon: category.icon,
+                items: category.items.map((item: any) => ({
+                  id: item.id,
+                  title: item.title,
+                  description: item.description,
+                  completed: item.status === "completed",
+                  priority: item.priority as "high" | "medium" | "low",
+                })),
+                completed: category.completed,
+                total: category.total,
+              }))}
+              isLoading={llmProcessing}
+              loadingMessage={`Analyzing document with ${activeProvider}...`}
+              activeProvider={activeProvider}
+              onItemToggle={(itemId) => {
+                console.log("🔥 Todo item toggled:", itemId);
+                // Find the item and toggle its status
+                const item = finalDisplayItems
+                  .flatMap((cat: any) => cat.items)
+                  .find((item: any) => item.id === itemId);
+                if (item) {
+                  const newStatus =
+                    item.status === "completed" ? "pending" : "completed";
+                  console.log(
+                    "🔥 Updating todo status:",
+                    itemId,
+                    "to",
+                    newStatus
+                  );
+                  if (hasLLMTodos) {
+                    updateTodoStatus(itemId, newStatus);
+                  }
+                }
+              }}
+              onRunAll={() => {
+                console.log("🔥 Run all tasks clicked");
+                // Implement run all functionality
+              }}
+            />
+          )}
         </div>
       )}
     </div>

@@ -83,9 +83,38 @@ export interface ElectronAPI {
   pdfFinalizerValidateFormData: (formData: any) => Promise<{ success: boolean; data?: any; error?: string }>;
 
   // LLM Form Analyzer APIs
-  analyzePDFWithLLM: (request: { pdfText: string; options?: any }) => Promise<LLMFormAnalysisResult>;
+  analyzePDFMultiModal: (request: { pdfBytes: number[]; options?: any }) => Promise<LLMFormAnalysisResult>;
+  clearFormCache: () => Promise<{ success: boolean; error?: string }>;
+  analyzePDFWithLLM: (request: { pdfText: string; options?: any }) => Promise<LLMFormAnalysisResult>; // Legacy
   updateLLMTodoStatus: (request: { todoId: string; status: string; todoList: any }) => Promise<{ success: boolean; data?: any; error?: string }>;
   extractPDFText: (pdfBytes: Uint8Array) => Promise<{ success: boolean; text?: string; error?: string }>;
+
+  // LLM Provider Management
+  getLLMProviders: () => Promise<{
+    success: boolean;
+    providers?: LLMProvider[];
+    activeProviderId?: string;
+    performanceComparison?: PerformanceComparison;
+    error?: string;
+  }>;
+  switchLLMProvider: (providerId: string) => Promise<{
+    success: boolean;
+    activeProviderId?: string;
+    providerInfo?: any;
+    error?: string;
+  }>;
+  getLLMPerformance: () => Promise<{
+    success: boolean;
+    performanceComparison?: PerformanceComparison;
+    fastestProvider?: string;
+    error?: string;
+  }>;
+  autoSelectBestProvider: () => Promise<{
+    success: boolean;
+    switched?: boolean;
+    activeProviderId?: string;
+    error?: string;
+  }>;
   
   // Debug logging
   debugLog: (message: string) => Promise<void>;
@@ -210,6 +239,66 @@ export interface AutofillStatusResult {
 // LLM Form Analysis Type Definitions
 export interface LLMFormAnalysisResult {
   success: boolean;
+  method?: string;
+  processingTime?: number;
+  confidence?: number;
+  cached?: boolean;
+  error?: string;
+  todoList?: {
+    categories?: Array<{
+      id: string;
+      name: string;
+      items: Array<{
+        id: string;
+        title: string;
+        description: string;
+        status: 'pending' | 'completed';
+        priority: 'low' | 'medium' | 'high';
+        required: boolean;
+        estimatedTime: string;
+      }>;
+    }>;
+  };
+}
+
+// LLM Provider Type Definitions
+export interface LLMProvider {
+  id: string;
+  name: string;
+  description: string;
+  available: boolean;
+  active: boolean;
+  status: 'ready' | 'not_initialized' | 'error';
+  performance?: {
+    totalRequests: number;
+    successfulRequests: number;
+    averageResponseTime: number;
+    lastResponseTime: number;
+    errorCount: number;
+  };
+  capabilities?: string[];
+  strengths?: string[];
+  bestFor?: string[];
+  modelName?: string;
+  parameters?: {
+    maxTokens: number;
+    temperature: number;
+    [key: string]: any;
+  };
+}
+
+export interface PerformanceComparison {
+  [providerId: string]: {
+    name: string;
+    averageResponseTime: number;
+    recentAverageTime: number;
+    successRate: number;
+    totalRequests: number;
+    lastResponseTime: number;
+  };
+}
+
+export interface LLMFormAnalysisResultWithStructure extends LLMFormAnalysisResult {
   formStructure?: {
     sections: Array<{
       id: string;

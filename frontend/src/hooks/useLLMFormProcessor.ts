@@ -133,20 +133,30 @@ export const useLLMFormProcessor = () => {
     }, []);
 
     const processPDFWithLLM = useCallback(async (pdfBytes: Uint8Array): Promise<boolean> => {
-      console.log('🚀🚀🚀 FRONTEND FUNCTION CALLED: processPDFWithLLM with', pdfBytes?.length, 'bytes');
-      if (window.electronAPI?.debugLog) {
-        window.electronAPI.debugLog(`🚀🚀🚀 FRONTEND FUNCTION CALLED: processPDFWithLLM with ${pdfBytes?.length} bytes`);
-      }
+        console.log('🚀🚀🚀 FRONTEND FUNCTION CALLED: processPDFWithLLM with', pdfBytes?.length, 'bytes');
+        if (window.electronAPI?.debugLog) {
+          window.electronAPI.debugLog(`🚀🚀🚀 FRONTEND FUNCTION CALLED: processPDFWithLLM with ${pdfBytes?.length} bytes`);
+        }
       console.log('🚀 FRONTEND: Processing state check:', {
         isCurrentlyProcessing: processingRef.current,
         hasElectronAPI: !!window.electronAPI,
-        hasAnalyzePDFWithLLM: !!window.electronAPI?.analyzePDFWithLLM
+        hasAnalyzePDFMultiModal: !!window.electronAPI?.analyzePDFMultiModal,
+        electronAPIKeys: window.electronAPI ? Object.keys(window.electronAPI) : []
       });
+      
+      if (window.electronAPI?.debugLog) {
+        window.electronAPI.debugLog(`🚀 FRONTEND: Processing state check - hasAnalyzePDFMultiModal: ${!!window.electronAPI?.analyzePDFMultiModal}`);
+      }
 
         if (processingRef.current) {
-            console.warn('LLM form processing already in progress');
+            console.warn('🚨 LLM form processing already in progress - SKIPPING');
+            if (window.electronAPI?.debugLog) {
+                window.electronAPI.debugLog('🚨 LLM form processing already in progress - SKIPPING');
+            }
             return false;
         }
+        
+        console.log('✅ Processing check passed, continuing...');
 
         processingRef.current = true;
         const startTime = Date.now();
@@ -162,35 +172,37 @@ export const useLLMFormProcessor = () => {
 
             console.log('Starting LLM-powered form analysis...');
 
-            // Step 1: Extract PDF text content
+            // Step 1: Prepare PDF bytes for multi-modal analysis
             updateProgress('extracting');
-            console.log('Step 1: Extracting PDF text content...');
+            console.log('Step 1: Preparing PDF for multi-modal analysis...');
             console.log('PDF bytes length:', pdfBytes.length);
 
-            const pdfText = await extractPDFText(pdfBytes);
-            console.log('PDF text extraction result:', {
-                textLength: pdfText?.length || 0,
-                hasText: !!pdfText,
-                preview: pdfText?.substring(0, 200) + '...'
-            });
+            // Step 2: Multi-modal form detection
+            updateProgress('analyzing');
+            console.log('Step 2: Starting multi-modal form detection...');
 
-            if (!pdfText || pdfText.trim().length === 0) {
-                throw new Error('No text content found in PDF');
+            if (!window.electronAPI?.analyzePDFMultiModal) {
+                throw new Error('Multi-modal PDF analysis API not available');
             }
 
-            console.log(`Extracted ${pdfText.length} characters of text`);
-
-            // Step 2: Analyze with LLM
-            updateProgress('analyzing');
-            console.log('Step 2: Analyzing form structure with LLM...');
-
-            const analysisResult = await window.electronAPI?.analyzePDFWithLLM({
-                pdfText: pdfText,
+            const analysisResult = await window.electronAPI.analyzePDFMultiModal({
+                pdfBytes: Array.from(pdfBytes),
                 options: {
                     includeFieldMapping: true,
                     generateTodos: true,
-                    enableAnimations: true
+                    enableAnimations: true,
+                    maxProcessingTime: 15000
                 }
+            });
+            console.log('Multi-modal analysis completed');
+
+            console.log('Multi-modal Analysis result received:', {
+                hasResult: !!analysisResult,
+                success: analysisResult?.success,
+                method: analysisResult?.method,
+                hasTodoList: !!analysisResult?.todoList,
+                categoriesCount: analysisResult?.todoList?.categories?.length,
+                error: analysisResult?.error
             });
 
             console.log('Frontend received analysis result:', {
@@ -206,12 +218,12 @@ export const useLLMFormProcessor = () => {
             }
 
             if (!analysisResult.success) {
-                throw new Error(`LLM analysis failed: ${analysisResult.error}`);
+                throw new Error(`Multi-modal analysis failed: ${analysisResult.error}`);
             }
 
-            // Step 3: Generate final todo structure
+            // Step 4: Generate final todo structure
             updateProgress('generating');
-            console.log('Step 3: Finalizing todo structure...');
+            console.log('Step 4: Finalizing todo structure...');
 
             // Process and validate the analysis result
             const processedResult = processAnalysisResult(analysisResult);
@@ -233,7 +245,7 @@ export const useLLMFormProcessor = () => {
             updateProgress('completed');
 
             const processingTime = Date.now() - startTime;
-            console.log(`\n=== LLM FORM PROCESSING COMPLETED ===`);
+            console.log(`\n=== MULTI-MODAL FORM PROCESSING COMPLETED ===`);
             console.log(`Total processing time: ${processingTime}ms`);
             console.log(`Sections detected: ${processedResult.formStructure.sections.length}`);
             console.log(`Fields detected: ${processedResult.formStructure.fields.length}`);
@@ -243,20 +255,22 @@ export const useLLMFormProcessor = () => {
             return true;
 
         } catch (error) {
-            console.error('LLM form processing failed:', error);
-            console.error('Error details:', {
+            console.error('🚨 Multi-modal form processing failed:', error);
+            console.error('🚨 Error details:', {
                 message: error instanceof Error ? error.message : 'Unknown error',
                 stack: error instanceof Error ? error.stack : undefined,
                 type: typeof error
             });
+            if (window.electronAPI?.debugLog) {
+              window.electronAPI.debugLog(`🚨 Multi-modal form processing failed: ${error}`);
+            }
             setState(prev => ({
                 ...prev,
                 error: error instanceof Error ? error.message : 'Unknown error occurred',
                 analysisResult: null
             }));
             return false;
-
-        } finally {
+      } finally {
             processingRef.current = false;
             setState(prev => ({
                 ...prev,
@@ -264,6 +278,19 @@ export const useLLMFormProcessor = () => {
             }));
         }
     }, [updateProgress]);
+
+    const resetAnalysis = useCallback(() => {
+        processingRef.current = false;
+        setState({
+            isProcessing: false,
+            isInitialized: false,
+            progress: 0,
+            processingStep: 'idle',
+            analysisResult: null,
+            error: null,
+            animationQueue: []
+        });
+    }, []);
 
     const updateTodoStatus = useCallback((todoId: string, status: LLMTodoItem['status']) => {
         setState(prev => {
@@ -366,6 +393,7 @@ export const useLLMFormProcessor = () => {
 
         // Actions
         processPDFWithLLM,
+        resetAnalysis,
         updateTodoStatus,
         clearAnimationQueue,
         getTodoById,
