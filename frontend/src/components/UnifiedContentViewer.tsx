@@ -145,95 +145,49 @@ const UnifiedContentViewer: React.FC<UnifiedContentViewerProps> = ({
     };
   }, []);
 
-  // Detect PDF forms using PDF.js
+  // PDF form detection removed - Chromium handles forms natively
   const detectPdfForms = useCallback(
     async (pdfUrl: string) => {
       try {
-        console.log("🔍 Detecting forms in PDF:", pdfUrl);
+        console.log("🔍 PDF loaded in Chromium BrowserView:", pdfUrl);
 
-        // For file:// URLs, we need to fetch the file differently
-        let pdfBytes: Uint8Array;
+        // For file:// URLs, just get the bytes for AI analysis
+        let pdfBytes: Uint8Array | null = null;
 
         if (pdfUrl.startsWith("file://")) {
-          // This is a local file, we'll need to read it through Electron
-          const response = await fetch(pdfUrl);
-          const arrayBuffer = await response.arrayBuffer();
-          pdfBytes = new Uint8Array(arrayBuffer);
-        } else {
-          // This is a regular URL
-          const response = await fetch(pdfUrl);
-          const arrayBuffer = await response.arrayBuffer();
-          pdfBytes = new Uint8Array(arrayBuffer);
-        }
+          try {
+            const response = await fetch(pdfUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            pdfBytes = new Uint8Array(arrayBuffer);
+            setPdfData(pdfBytes);
 
-        setPdfData(pdfBytes);
-
-        // Notify parent component about PDF bytes
-        if (onPdfBytesLoaded) {
-          onPdfBytesLoaded(pdfBytes);
-        }
-
-        // Load PDF with PDF.js
-        const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
-        const detectedFields: FormField[] = [];
-
-        // Check each page for form fields
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          const page = await pdf.getPage(pageNum);
-          const annotations = await page.getAnnotations();
-
-          annotations.forEach((annotation: any, index: number) => {
-            if (annotation.subtype === "Widget") {
-              const field: FormField = {
-                id: `field_${pageNum}_${index}`,
-                name: annotation.fieldName || `field_${pageNum}_${index}`,
-                type: getFieldType(annotation),
-                pageNumber: pageNum,
-                x: annotation.rect[0],
-                y: annotation.rect[1],
-                width: annotation.rect[2] - annotation.rect[0],
-                height: annotation.rect[3] - annotation.rect[1],
-                value: annotation.fieldValue || "",
-                isAcroForm: true,
-              };
-              detectedFields.push(field);
+            // Notify parent component about PDF bytes for AI analysis
+            if (onPdfBytesLoaded) {
+              onPdfBytesLoaded(pdfBytes);
             }
-          });
+          } catch (error) {
+            console.warn("Could not load PDF bytes for analysis:", error);
+          }
         }
 
-        console.log(`📝 Detected ${detectedFields.length} form fields`);
-        setFormFields(detectedFields);
+        console.log("📝 PDF forms handled natively by Chromium BrowserView");
 
-        // Initialize form data
-        const initialData: Record<string, any> = {};
-        detectedFields.forEach((field) => {
-          initialData[field.id] =
-            field.value || (field.type === "checkbox" ? false : "");
-        });
-        setFormData(initialData);
+        // No form fields to detect - Chromium handles forms automatically
+        setFormFields([]);
+        setFormData({});
 
-        // Notify parent component
+        // Notify parent that PDF is ready (no forms to detect)
         if (onFormFieldsDetected) {
-          onFormFieldsDetected(detectedFields);
-        }
-
-        // Enable edit mode for PDFs with forms
-        if (detectedFields.length > 0) {
-          setEditMode(true);
+          onFormFieldsDetected([]);
         }
       } catch (error) {
-        console.error("Error detecting PDF forms:", error);
+        console.error("Error handling PDF:", error);
       }
     },
-    [onFormFieldsDetected]
+    [onFormFieldsDetected, onPdfBytesLoaded]
   );
 
-  // Helper function to determine field type
-  const getFieldType = (annotation: any): "text" | "checkbox" | "signature" => {
-    if (annotation.checkBox) return "checkbox";
-    if (annotation.fieldType === "Sig") return "signature";
-    return "text";
-  };
+  // Field type helper removed - not needed since Chromium handles forms natively
 
   // Handle form field changes
   const handleFieldChange = (fieldId: string, value: any) => {

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import EditorToolbar from "./EditorToolbar";
-import { detectAcroFormFields } from "../utils/formDetection";
 import { PDFDocument } from "pdf-lib";
 
 interface FormField {
@@ -80,7 +79,7 @@ const EnhancedFormOverlay: React.FC<EnhancedFormOverlayProps> = ({
   // Check which processing modes are available
   const checkAvailableModes = async () => {
     try {
-      const modes = ["acroform"]; // AcroForm is always available
+      const modes = ["chromium_native"]; // Chromium handles forms natively
 
       // Check if OCR + AI processing is available
       if (window.electronAPI?.pdfProcessorCheckAvailability) {
@@ -92,9 +91,9 @@ const EnhancedFormOverlay: React.FC<EnhancedFormOverlayProps> = ({
 
       setAvailableModes(modes);
 
-      // Auto-select best mode
+      // Auto-select best mode (prefer OCR + AI since AcroForm is handled by Chromium)
       if (processingMode === "auto") {
-        const bestMode = modes.includes("acroform") ? "acroform" : modes[0];
+        const bestMode = modes.includes("ocr_ai") ? "ocr_ai" : modes[0];
         setCurrentMode(bestMode);
         onProcessingModeChange?.(bestMode);
       }
@@ -114,8 +113,8 @@ const EnhancedFormOverlay: React.FC<EnhancedFormOverlayProps> = ({
 
       let result: ProcessingResult;
 
-      if (currentMode === "acroform") {
-        result = await processWithAcroForm();
+      if (currentMode === "chromium_native" || currentMode === "acroform") {
+        result = await processWithAcroForm(); // Returns empty - forms handled by Chromium
       } else if (currentMode === "ocr_ai") {
         result = await processWithOCRAI();
       } else {
@@ -156,24 +155,22 @@ const EnhancedFormOverlay: React.FC<EnhancedFormOverlayProps> = ({
     }
   };
 
-  // Process PDF using AcroForm detection (existing method)
+  // AcroForm processing removed - Chromium handles PDF forms natively
+  // This method is kept for compatibility but returns empty result
   const processWithAcroForm = async (): Promise<ProcessingResult> => {
-    try {
-      const detected = await detectAcroFormFields(pdfBytes);
-      return {
-        success: true,
-        fields: detected,
-        processingMethod: "acroform",
-        metadata: { totalPages: 1, totalFields: detected.length },
-      };
-    } catch (error) {
-      console.error("EnhancedFormOverlay: AcroForm processing failed:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-        processingMethod: "acroform",
-      };
-    }
+    console.log(
+      "EnhancedFormOverlay: AcroForm detection skipped - handled natively by Chromium"
+    );
+    return {
+      success: true,
+      fields: [],
+      processingMethod: "chromium_native",
+      metadata: {
+        totalPages: 1,
+        totalFields: 0,
+        note: "Forms handled natively by Chromium BrowserView",
+      },
+    };
   };
 
   // Process PDF using OCR + AI approach
@@ -307,8 +304,8 @@ const EnhancedFormOverlay: React.FC<EnhancedFormOverlayProps> = ({
   // Handle save form
   const handleSaveForm = async () => {
     try {
-      // For AcroForm, delegate to parent (uses existing advanced save flow)
-      if (currentMode === "acroform") {
+      // For Chromium native forms, delegate to parent (uses existing advanced save flow)
+      if (currentMode === "chromium_native" || currentMode === "acroform") {
         onSaveForm?.(formData);
         return;
       }

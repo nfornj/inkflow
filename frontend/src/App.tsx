@@ -5,7 +5,6 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import * as pdfjsLib from "pdfjs-dist";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -162,13 +161,11 @@ function App() {
   const [aiLoading, setAiLoading] = useState(false);
 
   // PDF State
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [pdfScale, setPdfScale] = useState(1.0);
+  // PDF.js rendering state removed - Chromium handles PDF rendering natively
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [showTextLayerDebug, setShowTextLayerDebug] = useState(false);
   const [pdfSummary, setPdfSummary] = useState<string>("");
-  const [pdfDocument, setPdfDocument] = useState<any>(null);
+  // PDF document state removed - handled by Chromium
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detectedContentType, setDetectedContentType] = useState<string>("");
   const [pdfReloading, setPdfReloading] = useState(false);
@@ -259,7 +256,9 @@ function App() {
           );
         }
         await window.electronAPI?.setTheme(themeSource as any);
-      } catch {}
+      } catch (error) {
+        console.error('Setup error:', error);
+      }
     })();
 
     // Listen for OS theme changes if user selects Device
@@ -275,7 +274,10 @@ function App() {
           }
         })();
       });
-    } catch {}
+        } catch (error) {
+        console.error('Setup error:', error);
+          }
+  })();
   }, []);
 
   useEffect(() => {
@@ -299,8 +301,9 @@ function App() {
       if (isWebView) {
         window.electronAPI?.showBrowser();
       }
-    } catch {}
-  }, [darkMode, isWebView]);
+    } catch (error) {
+      console.error('Setup error:', error);
+    }, [darkMode, isWebView]);
 
   // Report layout metrics (top inset + sidebar width) to main for pixel-perfect BrowserView bounds
   useEffect(() => {
@@ -320,7 +323,8 @@ function App() {
         ) as HTMLElement | null;
         const sidebarWidth = sidebarEl?.offsetWidth || 320;
         window.electronAPI?.updateLayout({ topInset, sidebarWidth });
-      } catch {}
+      } catch (error) {
+      console.error('Setup error:', error);
     };
 
     reportLayout();
@@ -429,7 +433,9 @@ function App() {
       alert(`Error saving form: ${error}`);
       addDebugLog(`Error in advanced form save: ${error}`);
     }
-  };
+        } catch (error) {
+      console.error('Error:', error);
+    };
 
   // Sidebar resize functionality
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -447,8 +453,7 @@ function App() {
       try {
         await window.electronAPI.sidebarResized(320);
       } catch (error) {
-        console.error("Error notifying main process of sidebar reset:", error);
-      }
+      console.error('Error:', error);
     }
   };
 
@@ -475,13 +480,8 @@ function App() {
               await window.electronAPI.sidebarResized(constrainedWidth);
             }
           } catch (error) {
-            console.error(
-              "Error notifying main process during sidebar drag:",
-              error
-            );
-          }
-          window.sidebarResizeFrame = null;
-        });
+      console.error('Error:', error);
+    });
       }
     }
   };
@@ -502,12 +502,8 @@ function App() {
         try {
           await window.electronAPI.sidebarResized(sidebarWidth);
         } catch (error) {
-          console.error(
-            "Error notifying main process of sidebar resize:",
-            error
-          );
-        }
-      }
+      console.error('Error:', error);
+    }
     }
   };
 
@@ -582,10 +578,9 @@ function App() {
     try {
       await navigator.clipboard.writeText(text);
       addDebugLog("Content copied to clipboard");
-    } catch (err) {
-      addDebugLog("Failed to copy content");
-    }
-  };
+    } catch (error) {
+      console.error('Error:', error);
+    };
 
   // AI Provider setup and model management
   useEffect(() => {
@@ -643,6 +638,8 @@ function App() {
       } catch (error) {
         addDebugLog(`Error checking Llama model: ${error}`);
       }
+        } catch (error) {
+      console.error('Error:', error);
     };
 
     checkLlamaModel();
@@ -701,7 +698,9 @@ function App() {
         } catch (error) {
           addDebugLog(`Auto-start Ollama failed: ${error}`);
         }
-      }
+        } catch (error) {
+      console.error('Error:', error);
+    }
     };
 
     autoStartOllama();
@@ -715,34 +714,31 @@ function App() {
   // Setup PDF.js worker on mount - Completely disable workers for stability
   useEffect(() => {
     try {
-      // Completely disable PDF.js workers to prevent any worker loading issues
-      // This forces PDF.js to run in main thread mode, which is more stable in Electron
-      (pdfjsLib as any).GlobalWorkerOptions.workerSrc = false;
+      // PDF.js worker configuration removed - using Chromium native PDF handling
+      // No worker setup needed as Chromium handles PDF rendering natively
 
-      // Also disable standard font loading to prevent additional resource loading issues
-      (pdfjsLib as any).GlobalWorkerOptions.standardFontDataUrl = null;
+      // Standard font configuration removed - using Chromium native fonts
 
       addDebugLog(
-        "PDF.js worker completely disabled - using main thread mode for maximum stability"
+        "PDF.js worker configuration removed - using Chromium native PDF handling"
       );
 
       // Set additional PDF.js options to prevent worker creation
-      if (typeof (pdfjsLib as any).disableWorker !== "undefined") {
-        (pdfjsLib as any).disableWorker = true;
-      }
+      // Worker configuration removed - no PDF.js worker needed for Chromium native handling
     } catch (error) {
       console.warn("PDF.js configuration error:", error);
       // Force disable even if there are errors
       try {
-        (pdfjsLib as any).GlobalWorkerOptions.workerSrc = false;
+        // Fallback configuration removed - not needed with Chromium native handling
         addDebugLog(
           "PDF.js worker forcibly disabled due to configuration error"
         );
-      } catch (fallbackError) {
-        console.error("Could not disable PDF.js worker:", fallbackError);
-      }
+      } catch (error) {
+      console.error('Error:', error);
     }
-  }, [addDebugLog]);
+        } catch (error) {
+      console.error('Error:', error);
+    }, [addDebugLog]);
 
   // Debug activeTab changes (only log when PDF-related properties change)
   useEffect(() => {
@@ -763,15 +759,14 @@ function App() {
       activeTab.pdfBytes &&
       activeTab.pageNum
     ) {
-      renderPDFPage(activeTab.pdfBytes, activeTab.pageNum, pdfScale);
+      // PDF rendering removed - using Chromium native PDF handling
     }
   }, [
-    pdfScale,
-    showTextLayerDebug,
+    // PDF rendering dependencies removed - using Chromium native PDF handling
     activeTab?.isPDF,
     activeTab?.pdfBytes,
     activeTab?.pageNum,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  ]);
 
   // Set up Electron event listeners
   useEffect(() => {
@@ -894,7 +889,9 @@ function App() {
     } catch (error) {
       addDebugLog(`Navigation error: ${error}`);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   async function handleOmniboxSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -955,7 +952,9 @@ function App() {
     } finally {
       setPdfReloading(false);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   async function openPDF() {
     if (!window.electronAPI) {
@@ -1048,7 +1047,7 @@ function App() {
           setIsWebView(true);
 
           // Clear any cached PDF document
-          setPdfDocument(null);
+          // PDF document state removed - using Chromium native handling
 
           // PDF loaded successfully
           addDebugLog("PDF loaded successfully in unified viewer");
@@ -1126,7 +1125,9 @@ function App() {
               setShowFormTodos(false);
               console.error("PDF form processing setup error:", error);
             }
-          } else {
+        } catch (error) {
+      console.error('Error:', error);
+    } else {
             addDebugLog("Skipping form analysis - conditions not met");
           }
         } else {
@@ -1144,7 +1145,9 @@ function App() {
     } catch (error) {
       addDebugLog(`Error opening PDF: ${error}`);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   // Handle save from unified PDF editor
   const handleUnifiedPDFSave = useCallback(
@@ -1255,6 +1258,8 @@ function App() {
           alert(`Error saving PDF: ${error}`);
         }, 0);
       }
+        } catch (error) {
+      console.error('Error:', error);
     },
     [activeTab, tabPdfData, addDebugLog, selectedFont, selectedFontSize]
   );
@@ -1283,23 +1288,8 @@ function App() {
       addDebugLog(`PDF version: ${pdfHeader}`);
 
       // Use cached PDF document if available, otherwise load it
-      let pdf = pdfDocument;
-      if (!pdf) {
-        addDebugLog(`Loading PDF document (not cached)`);
-
-        // Enhanced PDF loading with better error handling
-        const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytes,
-          useSystemFonts: true,
-          disableFontFace: false,
-          isEvalSupported: false,
-          disableAutoFetch: false,
-          disableStream: false,
-          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
-          cMapPacked: true,
-          standardFontDataUrl:
-            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
-        });
+      // PDF document variable removed - using Chromium native handling
+      // PDF document check removed - using Chromium native handling);
 
         // Handle loading progress and errors
         loadingTask.onProgress = (progress: any) => {
@@ -1312,14 +1302,17 @@ function App() {
         };
 
         pdf = await loadingTask.promise;
-        setPdfDocument(pdf); // Cache the PDF document
+        // PDF document state removed - using Chromium native handling // Cache the PDF document
         addDebugLog(`PDF document loaded and cached successfully`);
       } else {
         addDebugLog(`Using cached PDF document`);
       }
+    } catch (error) {
+      console.error('PDF rendering error:', error);
+      // PDF rendering removed - using Chromium native handling
 
       // Store total pages
-      setTotalPages(pdf.numPages);
+      // Total pages state removed - using Chromium native handling
       addDebugLog(`PDF loaded: ${pdf.numPages} pages`);
 
       // Get the PDF container (the parent of pdf-page-container)
@@ -1550,23 +1543,8 @@ function App() {
       addDebugLog(`PDF version: ${pdfHeader}`);
 
       // Use cached PDF document if available, otherwise load it
-      let pdf = pdfDocument;
-      if (!pdf) {
-        addDebugLog(`Loading PDF document (not cached)`);
-
-        // Enhanced PDF loading with better error handling
-        const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytes,
-          useSystemFonts: true,
-          disableFontFace: false,
-          isEvalSupported: false,
-          disableAutoFetch: false,
-          disableStream: false,
-          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
-          cMapPacked: true,
-          standardFontDataUrl:
-            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
-        });
+      // PDF document variable removed - using Chromium native handling
+      // PDF document check removed - using Chromium native handling);
 
         // Handle loading progress and errors
         loadingTask.onProgress = (progress: any) => {
@@ -1579,14 +1557,17 @@ function App() {
         };
 
         pdf = await loadingTask.promise;
-        setPdfDocument(pdf); // Cache the PDF document
+        // PDF document state removed - using Chromium native handling // Cache the PDF document
         addDebugLog(`PDF document loaded and cached successfully`);
       } else {
         addDebugLog(`Using cached PDF document`);
       }
+    } catch (error) {
+      console.error('PDF rendering error:', error);
+      // PDF rendering removed - using Chromium native handling
 
       // Store total pages
-      setTotalPages(pdf.numPages);
+      // Total pages state removed - using Chromium native handling
       addDebugLog(`PDF loaded: ${pdf.numPages} pages`);
 
       // Get the pdf-page-container and make it scrollable
@@ -1743,23 +1724,18 @@ function App() {
       }
 
       // Load PDF document
-      let pdf = pdfDocument;
-      if (!pdf) {
-        const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytes,
-          useSystemFonts: true,
-          disableFontFace: false,
-          isEvalSupported: false,
-          disableAutoFetch: false,
-          disableStream: false,
-        });
+      // PDF document variable removed - using Chromium native handling
+      // PDF document check removed - using Chromium native handling);
 
         pdf = await loadingTask.promise;
-        setPdfDocument(pdf);
+        // PDF document state removed - using Chromium native handling
         addDebugLog(`PDF document loaded: ${pdf.numPages} pages`);
       }
+    } catch (error) {
+      console.error('PDF rendering error:', error);
+      // PDF rendering removed - using Chromium native handling
 
-      setTotalPages(pdf.numPages);
+      // Total pages state removed - using Chromium native handling
 
       // Get the main content area and replace it with a simple scrollable container
       const mainContent = document.querySelector(".main-content");
@@ -1941,23 +1917,8 @@ function App() {
       addDebugLog(`PDF version: ${pdfHeader}`);
 
       // Use cached PDF document if available, otherwise load it
-      let pdf = pdfDocument;
-      if (!pdf) {
-        addDebugLog(`Loading PDF document (not cached)`);
-
-        // Enhanced PDF loading with better error handling
-        const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytes,
-          useSystemFonts: true,
-          disableFontFace: false,
-          isEvalSupported: false,
-          disableAutoFetch: false,
-          disableStream: false,
-          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
-          cMapPacked: true,
-          standardFontDataUrl:
-            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
-        });
+      // PDF document variable removed - using Chromium native handling
+      // PDF document check removed - using Chromium native handling);
 
         // Handle loading progress and errors
         loadingTask.onProgress = (progress: any) => {
@@ -1970,14 +1931,17 @@ function App() {
         };
 
         pdf = await loadingTask.promise;
-        setPdfDocument(pdf); // Cache the PDF document
+        // PDF document state removed - using Chromium native handling // Cache the PDF document
         addDebugLog(`PDF document loaded and cached successfully`);
       } else {
         addDebugLog(`Using cached PDF document`);
       }
+    } catch (error) {
+      console.error('PDF rendering error:', error);
+      // PDF rendering removed - using Chromium native handling
 
       // Store total pages
-      setTotalPages(pdf.numPages);
+      // Total pages state removed - using Chromium native handling
       addDebugLog(`PDF loaded: ${pdf.numPages} pages`);
 
       // COMPLETELY NEW APPROACH - Find the main content area and replace it entirely
@@ -2166,23 +2130,8 @@ function App() {
       addDebugLog(`PDF version: ${pdfHeader}`);
 
       // Use cached PDF document if available, otherwise load it
-      let pdf = pdfDocument;
-      if (!pdf) {
-        addDebugLog(`Loading PDF document (not cached)`);
-
-        // Enhanced PDF loading with better error handling
-        const loadingTask = pdfjsLib.getDocument({
-          data: pdfBytes,
-          useSystemFonts: true,
-          disableFontFace: false,
-          isEvalSupported: false,
-          disableAutoFetch: false,
-          disableStream: false,
-          cMapUrl: "https://unpkg.com/pdfjs-dist@5.4.149/cmaps/",
-          cMapPacked: true,
-          standardFontDataUrl:
-            "https://unpkg.com/pdfjs-dist@5.4.149/standard_fonts/",
-        });
+      // PDF document variable removed - using Chromium native handling
+      // PDF document check removed - using Chromium native handling);
 
         // Handle loading progress and errors
         loadingTask.onProgress = (progress: any) => {
@@ -2195,11 +2144,14 @@ function App() {
         };
 
         pdf = await loadingTask.promise;
-        setPdfDocument(pdf); // Cache the PDF document
+        // PDF document state removed - using Chromium native handling // Cache the PDF document
         addDebugLog(`PDF document loaded and cached successfully`);
       } else {
         addDebugLog(`Using cached PDF document`);
       }
+    } catch (error) {
+      console.error('PDF rendering error:', error);
+      // PDF rendering removed - using Chromium native handling
 
       // Validate page number
       if (pageNum < 1 || pageNum > pdf.numPages) {
@@ -2212,7 +2164,7 @@ function App() {
       addDebugLog(`Page ${pageNum} loaded successfully`);
 
       // Store total pages
-      setTotalPages(pdf.numPages);
+      // Total pages state removed - using Chromium native handling
       addDebugLog(`PDF loaded: ${pdf.numPages} pages`);
 
       const canvas = canvasRef.current;
@@ -2353,7 +2305,9 @@ function App() {
     } catch (error) {
       addDebugLog(`Error rendering text layer: ${error}`);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   async function createSimpleTextLayer(page: any, viewport: any) {
     try {
@@ -2408,7 +2362,9 @@ function App() {
     } catch (error) {
       addDebugLog(`Error creating simple text layer: ${error}`);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   async function extractPdfTextContent(pdfBytes: Uint8Array): Promise<string> {
     try {
@@ -2438,7 +2394,9 @@ function App() {
       addDebugLog(`Error extracting PDF text: ${error}`);
       throw error;
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   async function generatePdfSummary(pdfBytes: Uint8Array) {
     if (!window.electronAPI) {
@@ -2503,6 +2461,9 @@ function App() {
         } catch (error) {
           addDebugLog(`Error testing Ollama installation: ${error}`);
         }
+    } catch (error) {
+      console.error('PDF rendering error:', error);
+      // PDF rendering removed - using Chromium native handling
 
         try {
           const serviceResult = await window.electronAPI.startOllamaService();
@@ -2540,12 +2501,16 @@ function App() {
             addDebugLog(`Error testing Ollama connection: ${error}`);
           }
         } catch (error) {
+      console.error('Error:', error);
+    } catch (error) {
           addDebugLog(`Error starting Ollama service: ${error}`);
           setPdfSummary(`Error: Could not start Ollama service. ${error}`);
           setSummaryLoading(false);
           return;
         }
-      }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
       // Use the universal PDF analysis endpoint with Llama 3.2
       const result = await window.electronAPI.analyzePdf({
@@ -2568,7 +2533,9 @@ function App() {
     } finally {
       setSummaryLoading(false);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   function createEnhancedPrompt(
     textContent: string,
@@ -2762,7 +2729,9 @@ ${textContent}`;
     } catch (error) {
       addDebugLog(`Error in fit to width: ${error}`);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   // Page navigation functions removed - using scrollable view instead
 
@@ -2788,7 +2757,9 @@ ${textContent}`;
     } finally {
       setAiLoading(false);
     }
-  }
+        } catch (error) {
+      console.error('Error:', error);
+    }
 
   function addNewTab() {
     const newTab: Tab = {
@@ -2830,6 +2801,8 @@ ${textContent}`;
       try {
         window.electronAPI?.setActiveTab(tab.id);
       } catch {}
+      console.error('PDF rendering error:', error);
+      // PDF rendering removed - using Chromium native handling
 
       if (tab.isPDF || tab.contentType === "pdf") {
         // Show Chromium BrowserView for PDF tabs
@@ -2858,8 +2831,9 @@ ${textContent}`;
                 }
                 await window.electronAPI.showBrowser();
               }
-            } catch {}
-          })();
+            } catch (error) {
+      console.error('Setup error:', error);
+    })();
         }
       } else if (tab.url) {
         // Show browser for URL tabs
@@ -3264,7 +3238,9 @@ ${textContent}`;
                                         } finally {
                                           setIsInstallingOllama(false);
                                         }
-                                      }}
+        } catch (error) {
+      console.error('Error:', error);
+    }}
                                     >
                                       Install Ollama Automatically
                                     </button>
@@ -3373,7 +3349,9 @@ ${textContent}`;
                                       `Error testing Ollama service: ${error}`
                                     );
                                   }
-                                }}
+        } catch (error) {
+      console.error('Error:', error);
+    }}
                               >
                                 Test Service
                               </button>
@@ -3404,7 +3382,9 @@ ${textContent}`;
                                       `Error starting Ollama service: ${error}`
                                     );
                                   }
-                                }}
+        } catch (error) {
+      console.error('Error:', error);
+    }}
                               >
                                 Start Service
                               </button>
@@ -3464,7 +3444,9 @@ ${textContent}`;
                                     } finally {
                                       setIsInstallingOllama(false);
                                     }
-                                  }}
+        } catch (error) {
+      console.error('Error:', error);
+    }}
                                   disabled={isInstallingOllama}
                                 >
                                   {isInstallingOllama
@@ -3574,7 +3556,9 @@ ${textContent}`;
                                             `Download error: ${error}`
                                           );
                                         }
-                                      }}
+        } catch (error) {
+      console.error('Error:', error);
+    }}
                                     >
                                       Download Model
                                     </button>

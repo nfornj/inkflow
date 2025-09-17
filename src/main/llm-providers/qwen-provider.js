@@ -1,29 +1,30 @@
 /**
- * MiniCPM-V Provider - Vision-Language Model for OCR
- * Provider for MiniCPM-V vision model with OCR capabilities
+ * Qwen2.5-VL Provider - Multimodal vision-language model for OCR
+ * Specialized provider for multimodal tasks including OCR, vision, and form detection
  */
 
 const BaseLLMProvider = require('./base-provider');
 const fetch = require('node-fetch').default || require('node-fetch');
+const fs = require('fs').promises;
 
-class MiniCPMProvider extends BaseLLMProvider {
+class QwenVLProvider extends BaseLLMProvider {
     constructor(config = {}) {
         super(config);
-        this.modelName = config.modelName || 'minicpm-v:latest';
+        this.modelName = config.modelName || 'qwen2.5vl:latest';
         this.apiUrl = config.apiUrl || 'http://127.0.0.1:11434';
         this.maxRetries = config.maxRetries || 3;
-        this.timeout = config.timeout || 180000; // 3 minutes for vision tasks
+        this.timeout = config.timeout || 120000; // 2 minutes for vision tasks
         this.supportsVision = true;
         this.supportsMultimodal = true;
     }
 
     /**
-     * Initialize the MiniCPM-V provider
+     * Initialize the Qwen2.5-VL provider
      * @returns {Promise<boolean>} Success status
      */
     async initialize() {
         try {
-            console.log('MiniCPMProvider: Initializing...');
+            console.log('QwenVLProvider: Initializing...');
             
             // Check if Ollama is running
             const healthCheck = await fetch(`${this.apiUrl}/api/tags`, { 
@@ -37,11 +38,12 @@ class MiniCPMProvider extends BaseLLMProvider {
             // Check if model is available
             const models = await healthCheck.json();
             const modelAvailable = models.models?.some(m => 
-                m.name.includes('minicpm') || m.name.includes('minicpm-v')
+                m.name.includes('qwen2.5-vl') || m.name.includes('qwen')
             );
             
             if (!modelAvailable) {
-                throw new Error('MiniCPM-V model not found in Ollama');
+                console.log('QwenVLProvider: Model not found, attempting to pull...');
+                await this.pullModel();
             }
             
             // Test model with a simple request
@@ -54,17 +56,42 @@ class MiniCPMProvider extends BaseLLMProvider {
             this.modelInfo = {
                 name: this.modelName,
                 type: 'multimodal',
-                capabilities: ['vision', 'text_generation', 'general_ocr'],
+                capabilities: ['vision', 'ocr', 'text_generation', 'form_detection'],
                 contextLength: 32768
             };
             
-            console.log('MiniCPMProvider: Initialized successfully');
+            console.log('QwenVLProvider: Initialized successfully');
             return true;
             
         } catch (error) {
-            console.error('MiniCPMProvider: Initialization failed:', error);
+            console.error('QwenVLProvider: Initialization failed:', error);
             this.isInitialized = false;
             return false;
+        }
+    }
+
+    /**
+     * Pull the Qwen2.5-VL model if not available
+     */
+    async pullModel() {
+        try {
+            console.log('QwenVLProvider: Pulling model...');
+            
+            const response = await fetch(`${this.apiUrl}/api/pull`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: this.modelName })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to pull model: ${response.status}`);
+            }
+            
+            console.log('QwenVLProvider: Model pulled successfully');
+            
+        } catch (error) {
+            console.error('QwenVLProvider: Failed to pull model:', error);
+            throw error;
         }
     }
 
@@ -78,7 +105,7 @@ class MiniCPMProvider extends BaseLLMProvider {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: this.modelName,
-                    prompt: 'Hello, can you help me with OCR tasks?',
+                    prompt: 'Hello, can you see this?',
                     stream: false
                 }),
                 timeout: 30000
@@ -92,7 +119,7 @@ class MiniCPMProvider extends BaseLLMProvider {
             return result && result.response;
             
         } catch (error) {
-            console.error('MiniCPMProvider: Model test failed:', error);
+            console.error('QwenVLProvider: Model test failed:', error);
             return false;
         }
     }
@@ -134,6 +161,7 @@ class MiniCPMProvider extends BaseLLMProvider {
             if (Buffer.isBuffer(imageData)) {
                 base64Image = imageData.toString('base64');
             } else if (typeof imageData === 'string') {
+                // Assume it's already base64
                 base64Image = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
             } else {
                 throw new Error('Invalid image data format');
@@ -145,7 +173,7 @@ class MiniCPMProvider extends BaseLLMProvider {
                 images: [base64Image],
                 stream: false,
                 options: {
-                    temperature: options.temperature || 0.2,
+                    temperature: options.temperature || 0.1,
                     top_p: options.top_p || 0.9,
                     ...options
                 }
@@ -185,106 +213,12 @@ class MiniCPMProvider extends BaseLLMProvider {
 
         } catch (error) {
             this.performanceStats.errorCount++;
-            console.error('MiniCPMProvider: Image processing failed:', error);
+            console.error('QwenVLProvider: Image processing failed:', error);
             
             return {
                 success: false,
                 error: error.message,
                 processingTime: Date.now() - startTime
-            };
-        }
-    }
-
-    /**
-     * Extract form fields using MiniCPM-V
-     * @param {Buffer|string} imageData - Image to process
-     * @param {Object} options - OCR options
-     * @returns {Promise<Object>} Structured OCR results
-     */
-    async extractFormFields(imageData, options = {}) {
-        const ocrPrompt = `Please carefully analyze this form image and extract all visible text and form elements.
-
-For each element you find, provide:
-1. The exact text content (if any)
-2. Position on the page (as percentages: 0-100 for x, y, width, height)
-3. Type of element (text, input field, checkbox, button, etc.)
-4. Confidence in your detection (0.0-1.0)
-
-Return your analysis in this JSON format:
-{
-  "text_elements": [
-    {
-      "text": "exact text found",
-      "x": 25.5,
-      "y": 30.2,
-      "width": 15.0,
-      "height": 2.5,
-      "type": "label",
-      "confidence": 0.95
-    }
-  ],
-  "form_fields": [
-    {
-      "label": "field label if found",
-      "type": "text",
-      "x": 45.0,
-      "y": 30.0,
-      "width": 25.0,
-      "height": 3.0,
-      "required": false
-    }
-  ]
-}
-
-Please be thorough and accurate in your analysis.`;
-
-        const result = await this.processImage(imageData, ocrPrompt, {
-            temperature: 0.1,
-            ...options
-        });
-
-        if (!result.success) {
-            return result;
-        }
-
-        try {
-            // Try to parse JSON response
-            const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                const parsedData = JSON.parse(jsonMatch[0]);
-                return {
-                    success: true,
-                    data: parsedData,
-                    rawText: result.text,
-                    processingTime: result.processingTime,
-                    model: result.model
-                };
-            } else {
-                // Fallback: extract text manually if JSON parsing fails
-                return {
-                    success: true,
-                    data: {
-                        text_elements: [],
-                        form_fields: [],
-                        raw_text: result.text
-                    },
-                    rawText: result.text,
-                    processingTime: result.processingTime,
-                    model: result.model
-                };
-            }
-        } catch (parseError) {
-            console.error('MiniCPMProvider: Failed to parse JSON response:', parseError);
-            return {
-                success: true,
-                data: {
-                    text_elements: [],
-                    form_fields: [],
-                    raw_text: result.text
-                },
-                rawText: result.text,
-                processingTime: result.processingTime,
-                model: result.model
             };
         }
     }
@@ -341,7 +275,7 @@ Please be thorough and accurate in your analysis.`;
 
         } catch (error) {
             this.performanceStats.errorCount++;
-            console.error('MiniCPMProvider: Text generation failed:', error);
+            console.error('QwenVLProvider: Text generation failed:', error);
             
             return {
                 success: false,
@@ -352,15 +286,109 @@ Please be thorough and accurate in your analysis.`;
     }
 
     /**
+     * Specialized OCR processing for form fields
+     * @param {Buffer|string} imageData - Image to process
+     * @param {Object} options - OCR options
+     * @returns {Promise<Object>} Structured OCR results
+     */
+    async extractFormFields(imageData, options = {}) {
+        const ocrPrompt = `Please analyze this image and extract all visible text along with form field information. 
+
+For each text element you find, provide:
+1. The exact text content
+2. Approximate coordinates (as percentages of image dimensions)  
+3. Whether it appears to be a label, input field, checkbox, or other form element
+4. Any relationships between labels and input fields
+
+Format your response as JSON with this structure:
+{
+  "text_elements": [
+    {
+      "text": "exact text content",
+      "x": percentage_x,
+      "y": percentage_y, 
+      "width": percentage_width,
+      "height": percentage_height,
+      "type": "label|input|checkbox|radio|select|button|text",
+      "confidence": 0.0-1.0
+    }
+  ],
+  "form_fields": [
+    {
+      "label": "field label if found",
+      "type": "text|checkbox|radio|select|textarea",
+      "x": percentage_x,
+      "y": percentage_y,
+      "width": percentage_width, 
+      "height": percentage_height,
+      "required": true|false
+    }
+  ]
+}
+
+Analyze the image carefully and provide accurate coordinates and text extraction.`;
+
+        const result = await this.processImage(imageData, ocrPrompt, {
+            temperature: 0.1,
+            ...options
+        });
+
+        if (!result.success) {
+            return result;
+        }
+
+        try {
+            // Try to parse JSON response
+            const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const parsedData = JSON.parse(jsonMatch[0]);
+                return {
+                    success: true,
+                    data: parsedData,
+                    rawText: result.text,
+                    processingTime: result.processingTime,
+                    model: result.model
+                };
+            } else {
+                // Fallback to raw text if JSON parsing fails
+                return {
+                    success: true,
+                    data: {
+                        text_elements: [],
+                        form_fields: [],
+                        raw_text: result.text
+                    },
+                    rawText: result.text,
+                    processingTime: result.processingTime,
+                    model: result.model
+                };
+            }
+        } catch (parseError) {
+            console.error('QwenVLProvider: Failed to parse JSON response:', parseError);
+            return {
+                success: true,
+                data: {
+                    text_elements: [],
+                    form_fields: [],
+                    raw_text: result.text
+                },
+                rawText: result.text,
+                processingTime: result.processingTime,
+                model: result.model
+            };
+        }
+    }
+
+    /**
      * Get provider information
      * @returns {Object} Provider info
      */
     getInfo() {
         return {
-            name: 'MiniCPM-V',
-            version: 'latest',
+            name: 'QwenVL',
+            version: '2.5',
             type: 'multimodal',
-            capabilities: ['vision', 'text_generation', 'general_ocr'],
+            capabilities: ['vision', 'ocr', 'text_generation', 'form_detection'],
             isInitialized: this.isInitialized,
             modelInfo: this.modelInfo,
             performanceStats: this.performanceStats
@@ -368,4 +396,4 @@ Please be thorough and accurate in your analysis.`;
     }
 }
 
-module.exports = MiniCPMProvider;
+module.exports = QwenVLProvider;

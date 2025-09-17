@@ -1,551 +1,152 @@
-# InkFlow - Intelligent PDF Browser with Local LLM Autofill
+# InkFlow Development Rules
+
+## 🧹 CRITICAL: Temporary File Cleanup
+
+**ALWAYS DELETE temporary test files after use unless explicitly asked to keep them**
+
+### Auto-Delete These File Types:
+
+- temp-_.pdf, test-_.js, debug-\*.log
+- _-temp._, _-test._, sample-\*.json
+- temp-test-_.js, temp-test-_.pdf, temp-test-\*.json
+- Any files created for testing/debugging purposes
+- **KEEP ONLY**: test-pdfs/ folder with permanent sample PDFs
+
+### Testing Protocol:
 
-## Project Overview
+1. Create temporary files with clear prefixes (temp-, test-, debug-)
+2. Run tests and validate functionality
+3. IMMEDIATELY delete temporary files after testing
+4. Only keep files when user explicitly requests it
 
-This is an Electron-based desktop application that combines PDF viewing/editing with web browsing capabilities, featuring a local LLM-powered AI assistant and intelligent autofill system. The app uses Chromium's BrowserView to provide true embedded browser functionality without iframe restrictions.
+### PDF Testing Requirements:
 
-## 🚀 **MAJOR UPGRADE IN PROGRESS: LLM Autofill System (v2.0.0)**
+- **ALWAYS TEST WITH SAMPLE PDFs** after any PDF-related changes
+- **USE TEST PDF FOLDER**: Use PDFs from `test-pdfs/` directory for validation
+- **TEST VARIETY**: Test simple, complex, fillable, and scanned PDFs
+- **VALIDATE RESULTS**: Ensure OCR, form detection, and processing work correctly
+- **ERROR-FREE PROCESSING**: Confirm no exceptions during PDF operations
+- **CREATE TEMP TEST SCRIPTS**: Generate temporary test scripts with `temp-test-` prefix
+- **DELETE TEST SCRIPTS**: IMMEDIATELY remove temp test scripts after validation
+- **DOCUMENT RESULTS**: Note test results in commit or development log
 
-**Status**: Planning Phase - See `LLM_AUTOFILL_UPGRADE_PLAN.md` for complete implementation details.
+### Error Prevention Protocol:
 
-### **New LLM Autofill Features (Coming in v2.0.0)**
+- **CHECK LINTS**: Run linter before making changes to catch issues early
+- **FIX ON SIGHT**: Address linting errors immediately, don't accumulate them
+- **TEST INCREMENTALLY**: Test small changes to catch errors quickly
+- **VALIDATE ASYNC**: Ensure all async operations have proper error handling
+- **CONSOLE MONITORING**: Check browser/node console for errors during testing
+- **TYPE VALIDATION**: Use TypeScript strict mode, fix type errors immediately
+
+## 📁 Project Structure Rules
+
+### File Organization:
 
-- **Local LLM Integration**: llama.cpp with node-llama-cpp for cross-platform inference
-- **Intelligent Autofill**: Context-aware field suggestions from encrypted user profiles
-- **GPU Acceleration**: Configurable GPU layer offloading for performance
-- **Model Management**: Automatic download and verification of GGUF models
-- **Performance Monitoring**: P95 latency < 3 seconds, memory management
-- **Zero UI Changes**: Backend-only implementation maintaining existing design
-
-## Architecture & Tech Stack
+- Never create files in root unless core project files
+- Use appropriate directories:
+  - src/main/ for backend modules
+  - frontend/src/ for React components
+  - docs/ for documentation
+  - src/test/ for permanent test files
 
-### Core Technologies
+### Documentation Rules:
 
-- **Frontend**: React + TypeScript + Vite
-- **Backend**: Electron (Node.js)
-- **Rendering Engine**: Chromium (via Electron BrowserView)
-- **PDF Processing**: pdfjs-dist + pdf-lib
-- **AI Integration**: OpenAI API
-- **UI Framework**: Radix UI Icons + Custom CSS
-
-### Key Directories
-
-- `/frontend/src/` - React frontend code
-- `/main.js` - Electron main process
-- `/preload.js` - IPC communication bridge
-- `/frontend/build/` - Production build output
-
-## Development Rules
-
-### 1. Electron-Specific Guidelines
-
-#### Main Process (`main.js`)
-
-- **Window Management**: Handle main window creation and lifecycle
-- **BrowserView**: Create and manage embedded browser functionality
-- **IPC Handlers**: All backend functionality via ipcMain.handle()
-- **Security**: Configure web security bypass for browser view
-- **File Operations**: Use Node.js fs module for file handling
-
-#### Renderer Process (React Frontend)
-
-```typescript
-// Always use Electron APIs via preload bridge
-const result = await window.electronAPI.navigateUrl(url);
-
-// Handle async operations with proper error handling
-try {
-  const fileData = await window.electronAPI.openFileDialog();
-} catch (error) {
-  console.error("File operation failed:", error);
-}
-```
-
-#### IPC Communication Pattern
+- **NEVER create multiple .md files** for analysis/summaries
+- **USE SINGLE TRACKING FILE**: Update `DEVELOPMENT_CHANGELOG.md` instead
+- **ALWAYS add date stamp** and reason for changes
+- **DELETE temporary analysis files** after incorporating into changelog
+- **ONLY create new .md files** when explicitly requested by user
 
-```javascript
-// Main process (main.js)
-ipcMain.handle("operation-name", async (event, params) => {
-  try {
-    // Perform operation
-    return { success: true, data: result };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Preload (preload.js)
-contextBridge.exposeInMainWorld("electronAPI", {
-  operationName: (params) => ipcRenderer.invoke("operation-name", params),
-});
-
-// Renderer (React)
-const result = await window.electronAPI.operationName(params);
-```
-
-### 2. BrowserView Implementation
-
-#### Creating Embedded Browser
-
-```javascript
-const browserView = new BrowserView({
-  webPreferences: {
-    nodeIntegration: false,
-    contextIsolation: true,
-    webSecurity: false, // Bypass iframe restrictions
-    allowRunningInsecureContent: true,
-  },
-});
-
-// Position within main window
-browserView.setBounds({ x: 50, y: 200, width: 1000, height: 600 });
-```
-
-#### Security Bypass for Restricted Sites
-
-```javascript
-browserView.webContents.session.webRequest.onHeadersReceived(
-  (details, callback) => {
-    // Remove headers that prevent embedding
-    delete details.responseHeaders["x-frame-options"];
-    delete details.responseHeaders["X-Frame-Options"];
-    delete details.responseHeaders["content-security-policy"];
-    delete details.responseHeaders["Content-Security-Policy"];
-
-    callback({ responseHeaders: details.responseHeaders });
-  }
-);
-```
-
-### 3. Frontend Development Rules
-
-#### React Component Structure
-
-```typescript
-// Type definitions for Electron APIs
-declare global {
-  interface Window {
-    electronAPI: {
-      navigateUrl: (url: string) => Promise<{ success: boolean }>;
-      // ... other APIs
-    };
-  }
-}
-
-// Component with Electron integration
-function BrowserComponent() {
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!window.electronAPI) return;
-
-    window.electronAPI.onBrowserLoading((data) => {
-      setIsLoading(data.loading);
-    });
-
-    return () => {
-      window.electronAPI.removeAllListeners("browser-loading");
-    };
-  }, []);
-}
-```
-
-#### State Management
-
-- **Tabs**: Use `tabs` state array with `activeId` for tab management
-- **PDF State**: Store `pdfBytes`, `fileName`, `filePath`, `pageNum` per tab
-- **Browser State**: Use `currentUrl`, `isWebView`, `omniboxValue`
-- **Debug**: Use `addDebugLog()` for user-visible debugging
-
-### 4. PDF Functionality Rules
-
-#### PDF Loading via Electron
-
-```typescript
-// Use Electron file dialog
-const fileResult = await window.electronAPI.openFileDialog();
-if (fileResult.success && fileResult.data) {
-  const pdfBytes = new Uint8Array(fileResult.data);
-  await renderPDFPage(pdfBytes, 1);
-}
-```
-
-#### PDF Rendering
-
-```typescript
-// Configure pdfjs-dist worker
-useEffect(() => {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-}, []);
-
-// Render PDF page
-async function renderPDFPage(pdfBytes: Uint8Array, pageNum: number) {
-  const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
-  const page = await pdf.getPage(pageNum);
-
-  const viewport = page.getViewport({ scale: 1.5 });
-  canvas.height = viewport.height;
-  canvas.width = viewport.width;
-
-  await page.render({ canvasContext: context, viewport }).promise;
-}
-```
-
-### 5. AI Assistant Rules
-
-#### Current System: Local Llama 3.2 (v1.x)
-
-```javascript
-// Current Llama integration via Ollama
-ipcMain.handle("ask-ai", async (event, prompt) => {
-  try {
-    return await callLlamaLocal(prompt);
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-```
-
-#### Future System: LLM Autofill (v2.0.0)
-
-```javascript
-// NEW: LLM Autofill Service
-class LLMService {
-  async loadModel(modelPath, gpuLayers) {
-    // Load GGUF model with llama.cpp
-  }
-
-  async generateSuggestion(context) {
-    // Generate autofill suggestions
-    return { suggestion: "value" | null, question: "text" | null };
-  }
-
-  async unloadModel() {
-    // Free memory when idle
-  }
-}
-
-// NEW: Profile Management
-class ProfileManager {
-  async saveProfile(profileData) {
-    // Encrypted storage with electron-store
-  }
-
-  generateContext(fieldContext, systemContext) {
-    // Create LLM context object
-  }
-}
-```
-
-#### LLM Autofill Integration Rules
-
-```typescript
-// Frontend: Cursor state management
-function handleFieldFocus(field: HTMLInputElement) {
-  field.style.cursor = "wait"; // Processing state
-
-  // Call LLM service
-  const suggestion = await window.electronAPI.getAutofillSuggestion(context);
-
-  if (suggestion.suggestion) {
-    field.value = suggestion.suggestion;
-    field.style.cursor = "text"; // Standard state
-  } else if (suggestion.question) {
-    // Show OS-level input prompt
-    const userInput = await showInputPrompt(suggestion.question);
-    await window.electronAPI.saveToProfile(userInput, fieldType);
-  }
-}
-```
-
-### 6. Security & Performance Rules
-
-#### Electron Security
-
-```javascript
-// Main window security
-new BrowserWindow({
-  webPreferences: {
-    nodeIntegration: false, // Disable Node.js in renderer
-    contextIsolation: true, // Isolate context
-    enableRemoteModule: false, // Disable remote module
-    preload: path.join(__dirname, "preload.js"),
-  },
-});
-
-// Prevent new window creation
-app.on("web-contents-created", (event, contents) => {
-  contents.on("new-window", (event, navigationUrl) => {
-    event.preventDefault();
-    // Handle in current browser view instead
-  });
-});
-```
-
-#### Performance Optimization
-
-- **Lazy Loading**: Load PDF.js worker only when needed
-- **Memory Management**: Clear PDF data when switching tabs
-- **Event Cleanup**: Remove all listeners in useEffect cleanup
-- **Debounced Updates**: Use debouncing for resize events
-
-### 7. Development Workflow
-
-#### Project Structure
-
-```
-myai-pdf-electron/
-├── main.js              # Electron main process
-├── preload.js            # IPC bridge
-├── package.json          # Main dependencies
-├── frontend/             # React application
-│   ├── src/App.tsx      # Main React component
-│   ├── src/index.tsx    # React entry point
-│   ├── package.json     # Frontend dependencies
-│   └── build/           # Production build
-└── dist/                # Electron build output
-```
-
-#### Development Commands
-
-```bash
-# Development mode
-npm run dev              # Start React + Electron
-
-# Production build
-npm run build            # Build React app
-npm run build:electron   # Package Electron app
-```
-
-### 8. Error Handling Rules
-
-#### Async Operations
-
-```typescript
-// Frontend error handling
-async function handleAsyncOperation() {
-  try {
-    const result = await window.electronAPI.someOperation();
-    if (result.success) {
-      // Handle success
-    } else {
-      addDebugLog(`Operation failed: ${result.error}`);
-    }
-  } catch (error) {
-    addDebugLog(`Unexpected error: ${error}`);
-  }
-}
-```
-
-#### Main Process Error Handling
-
-```javascript
-// Graceful error handling in main process
-ipcMain.handle("operation", async (event, params) => {
-  try {
-    const result = await performOperation(params);
-    return { success: true, data: result };
-  } catch (error) {
-    console.error("Operation failed:", error);
-    return { success: false, error: error.message };
-  }
-});
-```
-
-### 9. Browser Integration Rules
-
-#### URL Navigation
-
-```typescript
-// Handle different URL types
-async function navigateToUrl(url: string) {
-  // Ensure proper protocol
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    url = "https://" + url;
-  }
-
-  // Navigate via Electron BrowserView
-  const result = await window.electronAPI.navigateUrl(url);
-  if (result.success) {
-    setIsWebView(true);
-    await window.electronAPI.showBrowser();
-  }
-}
-```
-
-#### Browser Controls
-
-```typescript
-// Navigation controls
-const controls = {
-  back: () => window.electronAPI.browserBack(),
-  forward: () => window.electronAPI.browserForward(),
-  reload: () => window.electronAPI.browserReload(),
-  stop: () => window.electronAPI.browserStop(),
-};
-```
-
-### 10. LLM Autofill Development Rules (v2.0.0)
-
-#### Backend-Only Implementation
-
-- **NO UI CHANGES**: Maintain existing visual design, layout, and styling
-- **Cursor States Only**: Implement cursor state management for user feedback
-- **Focus Management**: Place caret at end of inserted text, no auto-advance
-- **Error Handling**: Graceful fallback to existing autofill system
-
-#### Performance Requirements
-
-```javascript
-// Performance targets
-const PERFORMANCE_TARGETS = {
-  P95_LATENCY: 3000, // 3 seconds max
-  MIN_RAM_GB: 8, // Minimum hardware
-  IDLE_TIMEOUT: 30, // Minutes before unload
-  MAX_MEMORY_GB: 4, // Model memory limit
-};
-
-// Hardware detection
-async function checkHardwareRequirements() {
-  const ram = await getSystemRAM();
-  if (ram < PERFORMANCE_TARGETS.MIN_RAM_GB) {
-    throw new Error(
-      `Insufficient RAM: ${ram}GB < ${PERFORMANCE_TARGETS.MIN_RAM_GB}GB`
-    );
-  }
-}
-```
-
-#### Model Management Rules
-
-```javascript
-// Model manifest structure
-const MODEL_MANIFEST = {
-  models: [
-    {
-      modelName: "LLaMA 3.2 8B Instruct (Fast)",
-      quantization: "Q4_K_M",
-      downloadUrl: "https://huggingface.co/...",
-      checksum: "sha256:...",
-      minRamGb: 8,
-      gpuRecommended: true,
-    },
-  ],
-};
-
-// Secure model storage
-const MODEL_STORAGE = {
-  path: path.join(app.getPath("userData"), "models"),
-  encryption: "AES-256-GCM",
-  verification: "SHA256",
-};
-```
-
-#### Context Generation Rules
-
-```javascript
-// Context structure for LLM
-const CONTEXT_TEMPLATE = {
-  user_profile: {
-    name: "John Doe",
-    address: { street: "123 King St E", city: "Oshawa" },
-  },
-  system_context: {
-    current_date: "2025-01-03",
-    locale: "en-CA",
-  },
-  field_context: {
-    field_type: "address",
-    field_name: "city",
-  },
-};
-
-// Response format
-const RESPONSE_FORMATS = {
-  SUCCESS: { suggestion: "Oshawa" },
-  QUESTION: { question: "What is your city?" },
-  EMPTY: { suggestion: null },
-};
-```
-
-### 11. Code Style Rules
-
-#### TypeScript
-
-- **Strict Types**: Define interfaces for all data structures
-- **Async/Await**: Use async/await for all asynchronous operations
-- **Error Boundaries**: Implement proper error handling
-- **Component Types**: Use proper React component typing
-
-#### JavaScript (Main Process)
-
-- **ES Modules**: Use modern import/export syntax where possible
-- **Error Handling**: Always use try-catch for async operations
-- **Documentation**: Add JSDoc comments for complex functions
-- **Security**: Validate all inputs from renderer process
-
-#### LLM Autofill Specific
-
-- **Memory Management**: Always unload models when idle
-- **Performance Logging**: Log all inference times and memory usage
-- **Error Recovery**: Graceful fallback to existing autofill
-- **Cross-Platform**: Test on Windows x64/ARM64, macOS Intel/Apple Silicon
-
-## Common Patterns
-
-### Adding New Electron API
-
-1. **Define handler in main.js**:
-
-```javascript
-ipcMain.handle("new-operation", async (event, params) => {
-  // Implementation
-  return { success: true, data: result };
-});
-```
-
-2. **Expose in preload.js**:
-
-```javascript
-contextBridge.exposeInMainWorld("electronAPI", {
-  newOperation: (params) => ipcRenderer.invoke("new-operation", params),
-});
-```
-
-3. **Use in React**:
-
-```typescript
-const result = await window.electronAPI.newOperation(params);
-```
-
-### Browser Integration Pattern
-
-1. **Create BrowserView** for URL navigation
-2. **Position correctly** within main window bounds
-3. **Handle navigation events** (loading, URL changes, errors)
-4. **Provide controls** (back, forward, reload)
-
-### PDF Processing Pattern
-
-1. **Open file via dialog** → Get file data as byte array
-2. **Convert to Uint8Array** → Load with pdfjs-dist
-3. **Render to canvas** → Display in React component
-4. **Handle navigation** between pages
-
-## Key Success Factors
-
-- **BrowserView Integration**: Provides true embedded browser functionality
-- **Security Bypass**: Removes iframe restrictions for all websites
-- **Performance**: Chromium engine provides excellent web compatibility
-- **User Experience**: Same-window experience without separate browser windows
-- **Maintainability**: Clean separation between main and renderer processes
-
-## Testing Guidelines
-
-- **Browser Functionality**: Test with restricted sites (Google, Facebook, etc.)
-- **PDF Operations**: Test with various PDF files and sizes
-- **AI Integration**: Verify OpenAI API connectivity
-- **File Operations**: Test file open/save dialogs
-- **Cross-Platform**: Test on macOS, Windows, and Linux
-
-This application successfully provides a professional PDF viewer and browser experience without the limitations typically encountered with web-based iframe embedding.
+### Technical Design Rules:
+
+- **SINGLE DESIGN FILE**: Use `TECHNICAL_DESIGN.md` for all architecture diagrams
+- **NO VERSIONS**: Always update in place, never create v2, v3, etc.
+- **LATEST DESIGN ONLY**: Replace outdated diagrams with current architecture
+- **MERMAID DIAGRAMS**: Use mermaid syntax for all technical diagrams
+- **UPDATE ON CHANGES**: When architecture changes, update diagrams immediately
+- **INCLUDE DATE**: Add "Last Updated" timestamp when diagrams are modified
+
+### Mermaid Diagram Standards:
+
+- **CONSISTENT FORMATTING**: Follow established diagram patterns from TECHNICAL_DESIGN.md
+- **SUBGRAPH STRUCTURE**: Use descriptive subgraph labels with underscores (e.g., `User_Interface [User Interface Layer]`)
+- **NODE NAMING**: Use single letters (A, B, C) with descriptive labels in brackets
+- **ARROW FLOW**: Use `-->` for standard flow, `-.->` for future/planned connections
+- **COLOR STYLING**: Apply colors to key nodes using `style` commands (blue: #4285f4, green: #34a853, red: #ea4335)
+- **SEQUENCE DIAGRAMS**: Use `participant` declarations and clear `Note over` annotations
+- **SPACING**: Maintain clean spacing with empty lines between major sections
+
+### Code Quality Requirements:
+
+- **ZERO LINTING ERRORS**: Fix all ESLint and TypeScript errors before proceeding
+- **COMPILATION SUCCESS**: Ensure all code compiles without errors
+- **NO RUNTIME ERRORS**: Test functionality to ensure no runtime exceptions
+- **ERROR HANDLING**: Add proper try-catch blocks for all async operations
+- **TYPE SAFETY**: Maintain strict TypeScript compliance
+- **CONSOLE CLEAN**: No unhandled promise rejections or console errors
+
+### Before Each Commit:
+
+- All temporary files deleted
+- **PDF tests passing** with sample documents from test-pdfs/
+- **Code compiles successfully** (npm run build)
+- **Frontend builds successfully** (cd frontend && npm run build)
+- **Tests passing** (npm test)
+- **No runtime errors** during basic functionality testing
+- **Temp test scripts deleted** (temp-test-_.js, temp-test-_.pdf)
+- Documentation updated in DEVELOPMENT_CHANGELOG.md
+- Code follows established patterns
+
+## 🔧 InkFlow Specific Guidelines
+
+### LLM Integration:
+
+- Use existing services: llm-service.js, llm-service-ollama.js
+- Follow autofill patterns from autofill-engine.js
+- Maintain performance: P95 < 3 seconds
+- Prefer local processing (privacy-focused)
+
+### PDF Processing:
+
+- Use: pdf-processor.js, pdf-finalizer.js
+- Follow form detection patterns
+- Maintain OCR integration with tesseract.js
+
+### React Frontend:
+
+- Use existing component patterns from components/
+- Maintain TypeScript strict mode
+- Follow established hooks in hooks/
+- Use utilities from utils/
+
+### Electron IPC:
+
+- Follow patterns from preload.js
+- Use contextBridge, no nodeIntegration
+- Handle errors gracefully
+- Maintain async/await patterns
+
+## ❌ Critical Don'ts
+
+- DON'T leave test files after development
+- DON'T create files in root without justification
+- DON'T break existing functionality
+- DON'T bypass security patterns
+- DON'T ignore TypeScript errors
+- DON'T commit code with linting errors
+- DON'T push code that doesn't compile
+- DON'T ignore runtime errors or exceptions
+- DON'T skip error handling in async functions
+- DON'T leave console.error() or unhandled promises
+
+## 🎯 Quality Standards
+
+- Performance: LLM < 3s, Memory < 4GB, Startup < 5s
+- Testing: >80% coverage for core modules
+- Security: Context isolation, encrypted storage
+- Maintainability: Clean code, clear documentation
+
+---
+
+REMEMBER: 🗑️ DELETE TEMPORARY FILES - Keep the codebase clean!

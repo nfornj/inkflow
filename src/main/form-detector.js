@@ -3,18 +3,18 @@
  * Coordinates AcroForm, Visual, Layout, and Semantic analysis with LLM fallback
  */
 
-const AcroFormDetector = require('./acroform-detector');
 const VisualDetector = require('./visual-detector');
 const LayoutAnalyzer = require('./layout-analyzer');
 const SemanticValidator = require('./semantic-validator');
+const PDFProcessor = require('./pdf-processor');
 
 class FormDetector {
     constructor(llmFormAnalyzer = null) {
         this.name = 'Multi-Modal Form Detector';
         this.version = '2.0.0';
         
-        // Initialize detection components
-        this.acroformDetector = new AcroFormDetector();
+        // Initialize detection components (AcroForm removed - Chromium handles natively)
+        this.pdfProcessor = new PDFProcessor();
         this.visualDetector = new VisualDetector();
         this.layoutAnalyzer = new LayoutAnalyzer();
         this.semanticValidator = new SemanticValidator();
@@ -22,9 +22,9 @@ class FormDetector {
         // LLM fallback (optional)
         this.llmFormAnalyzer = llmFormAnalyzer;
         
-        // Performance thresholds
+        // Performance thresholds (AcroForm removed)
         this.thresholds = {
-            acroformMinConfidence: 0.8,
+            ocrMinConfidence: 0.7,
             visualMinConfidence: 0.6,
             layoutMinConfidence: 0.5,
             overallMinConfidence: 0.4,
@@ -58,36 +58,48 @@ class FormDetector {
                 return cached;
             }
 
-            // Phase 1: AcroForm Detection (Primary Path)
-            console.log('📋 Phase 1: AcroForm Detection...');
-            const acroformResult = await this.runWithTimeout(
-                () => this.acroformDetector.detectFields(pdfBytes),
-                5000,
-                'AcroForm detection'
+            // Phase 1: OCR + AI Processing (Primary Path - AcroForm handled by Chromium)
+            console.log('📋 Phase 1: OCR + AI Analysis...');
+            const ocrResult = await this.runWithTimeout(
+                () => this.pdfProcessor.processPDF(Buffer.from(pdfBytes), {
+                    resolution: 300,
+                    ocrLanguage: 'eng',
+                    aiProvider: 'llama'
+                }),
+                12000,
+                'OCR + AI processing'
             );
 
-            // If AcroForm detection is successful and confident, use it
-            if (acroformResult.success && 
-                acroformResult.confidence >= this.thresholds.acroformMinConfidence &&
-                acroformResult.fields.length > 0) {
+            // If OCR + AI processing is successful and confident, use it
+            if (ocrResult.success && 
+                ocrResult.fields && 
+                ocrResult.fields.length > 0) {
                 
-                console.log(`✅ FormDetector: AcroForm path successful (${acroformResult.fields.length} fields)`);
+                console.log(`✅ FormDetector: OCR + AI path successful (${ocrResult.fields.length} fields)`);
                 
-                // Generate todos from AcroForm fields
-                const todoList = this.acroformDetector.generateTodos(acroformResult.fields);
+                // Generate todos from detected fields
+                let todoList = null;
+                if (this.llmFormAnalyzer) {
+                    try {
+                        const pdfText = this.extractTextFromOCRResult(ocrResult);
+                        todoList = await this.llmFormAnalyzer.generateTodoList({ fields: ocrResult.fields });
+                    } catch (error) {
+                        console.warn('FormDetector: Failed to generate todos from LLM:', error.message);
+                    }
+                }
                 
                 const result = {
                     success: true,
-                    method: 'acroform_primary',
-                    confidence: acroformResult.confidence,
+                    method: 'ocr_ai_primary',
+                    confidence: this.calculateOCRConfidence(ocrResult),
                     processingTime: Date.now() - startTime,
                     todoList,
-                    formStructure: this.createFormStructure(acroformResult.fields, 'acroform'),
-                    fieldMapping: this.createFieldMapping(acroformResult.fields),
+                    formStructure: this.createFormStructure(ocrResult.fields, 'ocr_ai'),
+                    fieldMapping: this.createFieldMapping(ocrResult.fields),
                     metadata: {
-                        detectionPath: 'acroform_primary',
-                        fieldsDetected: acroformResult.fields.length,
-                        ...acroformResult.metadata
+                        detectionPath: 'ocr_ai_primary',
+                        fieldsDetected: ocrResult.fields.length,
+                        ...ocrResult.metadata
                     }
                 };
                 
@@ -97,7 +109,7 @@ class FormDetector {
                 return result;
             }
 
-            console.log('📋 AcroForm detection insufficient, proceeding to visual analysis...');
+            console.log('📋 OCR + AI insufficient confidence, proceeding to visual analysis...');
 
             // Phase 2: Visual Detection (Secondary Path)
             console.log('👁️ Phase 2: Visual Element Detection...');
@@ -109,9 +121,9 @@ class FormDetector {
 
             let allFields = [];
             
-            // Add AcroForm fields if any were found
-            if (acroformResult.success && acroformResult.fields.length > 0) {
-                allFields.push(...acroformResult.fields);
+            // Add OCR fields if any were found
+            if (ocrResult.success && ocrResult.fields && ocrResult.fields.length > 0) {
+                allFields.push(...ocrResult.fields);
             }
 
             // Phase 3: Layout Analysis (if visual elements found)
@@ -729,6 +741,22 @@ class FormDetector {
             size: this.resultCache.size,
             keys: Array.from(this.resultCache.keys())
         };
+    }
+    /**
+     * Helper method to extract text from OCR result
+     */
+    extractTextFromOCRResult(ocrResult) {
+        if (!ocrResult.metadata || !ocrResult.metadata.ocrResults) return '';
+        return ocrResult.metadata.ocrResults.map(page => page.text || '').join('\n');
+    }
+
+    /**
+     * Calculate confidence score for OCR result
+     */
+    calculateOCRConfidence(ocrResult) {
+        if (!ocrResult.fields || ocrResult.fields.length === 0) return 0;
+        const avgConfidence = ocrResult.fields.reduce((sum, field) => sum + (field.confidence || 0.5), 0) / ocrResult.fields.length;
+        return Math.min(1.0, avgConfidence);
     }
 }
 

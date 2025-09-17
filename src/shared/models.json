@@ -3,6 +3,29 @@
   "lastUpdated": "2025-01-03",
   "models": [
     {
+      "id": "qwen2.5-vl-7b-instruct",
+      "modelName": "Qwen2.5-VL 7B Instruct",
+      "description": "Multimodal vision-language model for OCR and form field detection",
+      "quantization": "Q4_K_M",
+      "downloadUrl": "ollama://qwen2.5vl:latest",
+      "checksum": "sha256:PLACEHOLDER_CHECKSUM_UPDATE_WITH_REAL_VALUE",
+      "minRamGb": 8,
+      "maxRamGb": 14,
+      "gpuRecommended": true,
+      "gpuLayers": 32,
+      "contextLength": 32768,
+      "fileSizeGb": 5.2,
+      "performance": {
+        "inferenceSpeed": "fast",
+        "accuracy": "very_high",
+        "memoryEfficiency": "good"
+      },
+      "supportedTasks": ["ocr", "vision", "form_detection", "text_generation", "multimodal"],
+      "tags": ["vision", "ocr", "multimodal", "recommended", "form_fields"]
+    },
+    // COMMENTED OUT: Focus on Qwen2.5-VL testing only
+    /*
+    {
       "id": "llama-3.2-8b-instruct-fast",
       "modelName": "LLaMA 3.2 8B Instruct (Fast)",
       "description": "Fast, efficient model for autofill suggestions with good accuracy",
@@ -23,6 +46,8 @@
       "supportedTasks": ["autofill", "text_generation", "question_answering"],
       "tags": ["fast", "efficient", "autofill", "recommended"]
     },
+    */
+    /*
     {
       "id": "llama-3.2-8b-instruct-quality",
       "modelName": "LLaMA 3.2 8B Instruct (Quality)",
@@ -65,9 +90,10 @@
       "supportedTasks": ["autofill", "text_generation"],
       "tags": ["compact", "fast", "low_memory", "mobile"]
     }
+    */
   ],
-  "defaultModel": "llama-3.2-8b-instruct-fast",
-  "fallbackModel": "phi-3-3.8b-instruct",
+  "defaultModel": "qwen2.5-vl-7b-instruct",
+  "fallbackModel": "qwen2.5-vl-7b-instruct",
   "updateCheckUrl": "https://api.github.com/repos/neekrish/inkflow/releases/latest",
   "modelStoragePath": "models",
   "downloadTimeout": 300000,

@@ -1,5 +1,6 @@
 const pdfPoppler = require('pdf-poppler');
-const Tesseract = require('tesseract.js');
+// const Tesseract = require('tesseract.js'); // COMMENTED OUT: Replaced with Qwen2.5-VL
+const QwenVLProvider = require('./llm-providers/qwen-provider');
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
@@ -17,6 +18,8 @@ class PDFProcessor {
   constructor() {
     this.tempDir = null;
     this.cleanupFiles = [];
+    this.qwenProvider = new QwenVLProvider();
+    this.isQwenInitialized = false;
   }
 
   /**
@@ -43,11 +46,11 @@ class PDFProcessor {
       console.log('PDFProcessor: Converting PDF to images...');
       const pageImages = await this.convertPDFToImages(pdfBuffer, resolution);
       
-      // Step 2: Perform OCR on each page
-      console.log('PDFProcessor: Performing OCR on pages...');
+      // Step 2: Perform OCR on each page using Qwen2.5-VL
+      console.log('PDFProcessor: Performing Qwen2.5-VL OCR on pages...');
       const ocrResults = await this.performOCR(pageImages, ocrLanguage);
       
-      // Step 3: Use AI to analyze layout and identify form fields
+      // Step 3: Use AI to analyze layout and identify form fields (enhanced with Qwen's direct field detection)
       console.log('PDFProcessor: Analyzing layout with AI...');
       const formFields = await this.analyzeLayoutWithAI(ocrResults, aiProvider);
       
@@ -180,7 +183,7 @@ class PDFProcessor {
       
       try {
         // Perform OCR with bounding box detection
-        const { data } = await Tesseract.recognize(imagePath, language, {
+        const { data } = await this.qwenProvider.extractFormFields(imagePath, language, {
           logger: (m) => {
             if (m.status === 'recognizing text') {
               console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
@@ -192,10 +195,10 @@ class PDFProcessor {
         const pageData = {
           pageNumber: i + 1,
           imagePath: imagePath,
-          text: data.text,
-          words: (data.words || []).map(word => ({
+          text: ocrResult.rawText || "",
+          words: (ocrResult.data?.text_elements || []).map(word => ({
             text: word.text,
-            confidence: word.confidence,
+            confidence: element.confidence || 0.9,
             bbox: {
               x0: word.bbox.x0,
               y0: word.bbox.y0,
